@@ -1,0 +1,21 @@
+[package]
+name = "likeness"
+version = "0.1.0"
+edition = "2021"
+description = "Likeness by NT — outsider spiritual successor to Photo Booth. No curtains."
+authors = ["Jon McMillion / New Tower"]
+license = "UNLICENSED"
+
+[dependencies]
+async-io = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+freya = { version = "0.4", features = ["engine"] }
+freya-skia-safe = { version = "0.98.1", default-features = false, features = ["textlayout"] }
+keyboard-types = "0.8"
+nokhwa = { version = "0.10.11", features = ["input-native"] }
+png = "0.17"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
