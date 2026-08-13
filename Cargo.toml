@@ -24,6 +24,9 @@ core-media-sys = "0.1"
 core-video-sys = "0.1"
 objc = "0.2"
 
+[dev-dependencies]
+freya-testing = "0.4.1"
+
 [profile.release]
 lto = true
 strip = true

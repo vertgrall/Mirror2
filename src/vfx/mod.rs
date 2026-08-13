@@ -32,12 +32,6 @@ fn vfx_state() -> &'static Mutex<VfxState> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LookGroup {
-    Process,
-    Tape,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Look {
     None,
     Morph,
@@ -48,15 +42,14 @@ pub enum Look {
 }
 
 impl Look {
-    pub const PROCESS: [Self; 1] = [Self::Morph];
-    pub const TAPE: [Self; 4] = [Self::Vhs, Self::Gx, Self::Cctv, Self::Ripple];
-
-    pub fn for_group(group: LookGroup) -> &'static [Self] {
-        match group {
-            LookGroup::Process => &Self::PROCESS,
-            LookGroup::Tape => &Self::TAPE,
-        }
-    }
+    pub const RAIL: [Self; 6] = [
+        Self::None,
+        Self::Morph,
+        Self::Vhs,
+        Self::Gx,
+        Self::Cctv,
+        Self::Ripple,
+    ];
 
     pub fn id(self) -> u8 {
         match self {
@@ -82,7 +75,7 @@ impl Look {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::None => "NONE",
+            Self::None => "OFF",
             Self::Morph => "MORPH",
             Self::Vhs => "VHS",
             Self::Gx => "GX",
@@ -102,17 +95,20 @@ impl Look {
         }
     }
 
+    /// One line on a sheet tile — what the look does, not a brand name.
+    pub fn tile_line(self) -> &'static str {
+        match self {
+            Self::None => "clean camera",
+            Self::Morph => "ink drawing",
+            Self::Vhs => "tracking · wear",
+            Self::Gx => "Hi8 · 1994",
+            Self::Cctv => "blocky · crushed",
+            Self::Ripple => "water rings",
+        }
+    }
+
     pub fn is_none(self) -> bool {
         matches!(self, Self::None)
-    }
-}
-
-impl LookGroup {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Process => "PROCESS",
-            Self::Tape => "TAPE",
-        }
     }
 }
 
@@ -132,11 +128,8 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     state.tick(rgb, w, h);
 
     let composited = composite::apply(rgb, w, h, plate.as_deref(), &bg_params);
-    if look.is_none() {
-        return ops::rgb_to_rgba(&composited, w, h);
-    }
     let wet = look_params.wet();
-    let rgba = if wet < 0.01 {
+    let rgba = if look.is_none() || wet < 0.01 {
         ops::rgb_to_rgba(&composited, w, h)
     } else {
         let mut looked = apply_look(look, &composited, w, h, &state, &look_params);
@@ -373,6 +366,35 @@ mod tests {
     }
 
     #[test]
+    fn app_defaults_are_no_fx() {
+        assert!(Look::None.is_none());
+        assert_eq!(Look::from_id(0), Look::None);
+        assert!(!BackgroundParams::default().enabled);
+        assert!(AtmosphereParams::default().smoke < 0.01);
+        assert!(Look::None.param_defs().is_empty());
+    }
+
+    #[test]
+    fn haze_modifies_rgba() {
+        let rgb = sample_rgb(32, 24);
+        let rgba = ops::rgb_to_rgba(&rgb, 32, 24);
+        let state = VfxState::default();
+        let out = atmo::apply(
+            &rgba,
+            32,
+            24,
+            &state,
+            &AtmosphereParams {
+                smoke: 0.8,
+                density: 0.8,
+                drift: 0.4,
+                scale: 0.55,
+            },
+        );
+        assert_ne!(out, rgba);
+    }
+
+    #[test]
     fn wet_pct_changes_morph_output() {
         set_atmo(AtmosphereParams {
             smoke: 0.0,
@@ -386,7 +408,10 @@ mod tests {
         let a = apply(Look::Morph, &rgb, 32, 24);
 
         let mut wet = LookParams::defaults(Look::Morph);
-        assert!(wet.apply_pct(0, def, 100.0));
+        assert!(
+            !wet.apply_pct(0, def, 100.0),
+            "Morph wet default is already 100%"
+        );
         set_params(wet);
         let b = apply(Look::Morph, &rgb, 32, 24);
 

@@ -231,4 +231,11 @@ mod tests {
         assert_eq!(Look::from_id(0), Look::None);
         assert_eq!(Look::None.id(), 0);
     }
+
+    #[test]
+    fn tile_line_names_the_effect() {
+        assert_eq!(Look::Vhs.tile_line(), "tracking · wear");
+        assert_eq!(Look::Morph.tile_line(), "ink drawing");
+        assert_eq!(Look::None.tile_line(), "clean camera");
+    }
 }

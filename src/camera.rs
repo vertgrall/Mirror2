@@ -49,6 +49,10 @@ pub fn set_look(look: Look) {
     LOOK.store(look.id(), Ordering::Relaxed);
 }
 
+pub fn current_look() -> Look {
+    Look::from_id(LOOK.load(Ordering::Relaxed))
+}
+
 /// Re-run VFX on the latest camera frame with current look + params.
 /// Call from UI when controls change so preview updates immediately.
 pub fn refresh_preview() {
