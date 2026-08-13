@@ -1,6 +1,6 @@
 //! Live likeness, countdown, flash. Flat — no tape, no frame, no grain.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use freya::components::CanvasContext;
 use freya::engine::prelude::{
@@ -9,12 +9,14 @@ use freya::engine::prelude::{
 };
 use skia_safe::images;
 use skia_safe::utils::text_utils::Align as TextAlign;
+use skia_safe::Image;
 
 use crate::camera::{CameraStatus, Frame};
 use crate::effects::Look;
 
 #[derive(Clone)]
 pub struct StageFrame {
+    pub seq: u64,
     pub width: u32,
     pub height: u32,
     pub rgba: Arc<[u8]>,
@@ -23,11 +25,28 @@ pub struct StageFrame {
 impl From<Frame> for StageFrame {
     fn from(frame: Frame) -> Self {
         Self {
+            seq: frame.seq,
             width: frame.width,
             height: frame.height,
             rgba: frame.rgba,
         }
     }
+}
+
+struct BlitCache {
+    seq: u64,
+    image: Option<Image>,
+}
+
+static BLIT_CACHE: OnceLock<Mutex<BlitCache>> = OnceLock::new();
+
+fn blit_cache() -> &'static Mutex<BlitCache> {
+    BLIT_CACHE.get_or_init(|| {
+        Mutex::new(BlitCache {
+            seq: 0,
+            image: None,
+        })
+    })
 }
 
 pub fn draw_stage(
@@ -72,19 +91,35 @@ fn fill(ctx: &mut CanvasContext, w: f32, h: f32, color: Color4f) {
 }
 
 fn blit_cover(ctx: &mut CanvasContext, frame: &StageFrame, well: SkRect) {
-    let info = ImageInfo::new(
-        (frame.width as i32, frame.height as i32),
-        ColorType::RGBA8888,
-        AlphaType::Unpremul,
-        None,
-    );
-    let Some(image) = images::raster_from_data(
-        &info,
-        Data::new_copy(frame.rgba.as_ref()),
-        frame.width as usize * 4,
-    ) else {
+    let image = {
+        let Ok(mut cache) = blit_cache().lock() else {
+            return;
+        };
+        if cache.seq != frame.seq || cache.image.is_none() {
+            let info = ImageInfo::new(
+                (frame.width as i32, frame.height as i32),
+                ColorType::RGBA8888,
+                AlphaType::Unpremul,
+                None,
+            );
+            let Some(image) = images::raster_from_data(
+                &info,
+                Data::new_copy(frame.rgba.as_ref()),
+                frame.width as usize * 4,
+            ) else {
+                draw_frame_error(ctx, well, frame.width, frame.height);
+                return;
+            };
+            cache.seq = frame.seq;
+            cache.image = Some(image);
+        }
+        cache.image.clone()
+    };
+
+    let Some(image) = image else {
         return;
     };
+
     let iw = frame.width as f32;
     let ih = frame.height as f32;
     let scale = (well.width() / iw).max(well.height() / ih);
@@ -101,6 +136,21 @@ fn blit_cover(ctx: &mut CanvasContext, frame: &StageFrame, well: SkRect) {
         SkRect::from_xywh(dx, dy, dw, dh),
         sampling,
         &paint,
+    );
+}
+
+fn draw_frame_error(ctx: &mut CanvasContext, well: SkRect, width: u32, height: u32) {
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_color4f(Color4f::new(1.0, 1.0, 1.0, 1.0), None);
+    let mut font = Font::default();
+    font.set_size(14.0);
+    ctx.canvas.draw_str_align(
+        format!("frame {width}×{height} would not draw"),
+        Point::new(well.center_x(), well.center_y()),
+        &font,
+        &paint,
+        TextAlign::Center,
     );
 }
 

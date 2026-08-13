@@ -1,11 +1,15 @@
 //! Live camera on a background thread. Falls back to a drawn witness.
+//!
+//! Preview path: sensor → downscale → mirror → VFX → UI (~640px wide).
+//! Capture path: latest full-res RGB kept for shutter saves only.
 
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::effects::{self, Look};
+use crate::theme::PREVIEW_MAX_W;
 
 #[derive(Clone)]
 pub struct Frame {
@@ -23,9 +27,11 @@ pub enum CameraStatus {
 }
 
 static LOOK: AtomicU8 = AtomicU8::new(0);
+static FRAME_SEQ: AtomicU64 = AtomicU64::new(0);
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static FRAME: OnceLock<Mutex<Option<Frame>>> = OnceLock::new();
 static STATUS: OnceLock<Mutex<CameraStatus>> = OnceLock::new();
+static FULL_RGB: OnceLock<Mutex<Option<(u32, u32, Vec<u8>)>>> = OnceLock::new();
 
 fn frame_lock() -> &'static Mutex<Option<Frame>> {
     FRAME.get_or_init(|| Mutex::new(None))
@@ -35,12 +41,55 @@ fn status_lock() -> &'static Mutex<CameraStatus> {
     STATUS.get_or_init(|| Mutex::new(CameraStatus::Starting))
 }
 
+fn full_lock() -> &'static Mutex<Option<(u32, u32, Vec<u8>)>> {
+    FULL_RGB.get_or_init(|| Mutex::new(None))
+}
+
 pub fn set_look(look: Look) {
     LOOK.store(look.id(), Ordering::Relaxed);
 }
 
+/// Re-run VFX on the latest camera frame with current look + params.
+/// Call from UI when controls change so preview updates immediately.
+pub fn refresh_preview() {
+    let Ok(guard) = full_lock().lock() else {
+        return;
+    };
+    let Some((w, h, rgb)) = guard.as_ref() else {
+        return;
+    };
+    let (pw, ph, small) = effects::downscale_rgb(rgb, *w, *h, PREVIEW_MAX_W);
+    let mirrored = effects::mirror_rgb(&small, pw, ph);
+    let look = Look::from_id(LOOK.load(Ordering::Relaxed));
+    let rgba = effects::apply(look, &mirrored, pw, ph);
+    publish(pw, ph, rgba);
+}
+
+/// Latest preview frame for live view. Non-blocking — returns None if camera holds the lock.
 pub fn current_frame() -> Option<Frame> {
-    frame_lock().lock().ok()?.clone()
+    frame_lock().try_lock().ok()?.clone()
+}
+
+/// Full-res frame with current look applied — for shutter saves only.
+pub fn snapshot_for_keep() -> Option<Frame> {
+    let (w, h, mirrored) = {
+        let guard = full_lock().try_lock().ok()?;
+        let (w, h, rgb) = guard.as_ref()?;
+        (*w, *h, effects::mirror_rgb(rgb, *w, *h))
+    };
+    let look = Look::from_id(LOOK.load(Ordering::Relaxed));
+    let rgba = effects::apply(look, &mirrored, w, h);
+    let seq = frame_lock()
+        .try_lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|f| f.seq))
+        .unwrap_or(0);
+    Some(Frame {
+        width: w,
+        height: h,
+        rgba: rgba.into(),
+        seq,
+    })
 }
 
 pub fn status() -> CameraStatus {
@@ -60,14 +109,20 @@ pub fn start() {
         .expect("spawn camera thread");
 }
 
-fn publish(width: u32, height: u32, rgba: Vec<u8>, seq: &mut u64) {
-    *seq += 1;
+fn store_full(w: u32, h: u32, rgb: Vec<u8>) {
+    if let Ok(mut slot) = full_lock().lock() {
+        *slot = Some((w, h, rgb));
+    }
+}
+
+fn publish(width: u32, height: u32, rgba: Vec<u8>) {
+    let seq = FRAME_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
     if let Ok(mut slot) = frame_lock().lock() {
         *slot = Some(Frame {
             width,
             height,
             rgba: rgba.into(),
-            seq: *seq,
+            seq,
         });
     }
 }
@@ -78,111 +133,125 @@ fn set_status(next: CameraStatus) {
     }
 }
 
+struct PipeStats {
+    frames: u64,
+    dropped: u64,
+    total_ms: f64,
+    last_log: Instant,
+}
+
+impl PipeStats {
+    fn record(&mut self, dropped: u64, ms: f64) {
+        self.frames += 1;
+        self.dropped += dropped;
+        self.total_ms += ms;
+        if self.last_log.elapsed() >= Duration::from_secs(3) {
+            let avg = if self.frames > 0 {
+                self.total_ms / self.frames as f64
+            } else {
+                0.0
+            };
+            eprintln!(
+                "likeness: preview pipe  {:.1} ms/frame avg  {} fps  {} dropped",
+                avg,
+                self.frames / 3,
+                self.dropped,
+            );
+            self.frames = 0;
+            self.dropped = 0;
+            self.total_ms = 0.0;
+            self.last_log = Instant::now();
+        }
+    }
+}
+
+fn process_preview(w: u32, h: u32, rgb: Vec<u8>, stats: &mut PipeStats, dropped: u64) {
+    let t0 = Instant::now();
+    let (pw, ph, small) = effects::downscale_rgb(&rgb, w, h, PREVIEW_MAX_W);
+    store_full(w, h, rgb);
+    let mirrored = effects::mirror_rgb(&small, pw, ph);
+    let look = Look::from_id(LOOK.load(Ordering::Relaxed));
+    let rgba = effects::apply(look, &mirrored, pw, ph);
+    publish(pw, ph, rgba);
+    stats.record(dropped, t0.elapsed().as_secs_f64() * 1000.0);
+}
+
 fn camera_loop() {
-    match open_live_camera() {
-        Ok((mut camera, name)) => {
-            set_status(CameraStatus::Live { name });
-            let mut seq = 0u64;
-            loop {
-                match camera.frame() {
-                    Ok(buffer) => {
-                        if let Ok(decoded) =
-                            buffer.decode_image::<nokhwa::pixel_format::RgbFormat>()
-                        {
-                            let w = decoded.width();
-                            let h = decoded.height();
-                            let mirrored = effects::mirror_rgb(decoded.as_raw(), w, h);
-                            let look = Look::from_id(LOOK.load(Ordering::Relaxed));
-                            let rgba = effects::apply(look, &mirrored, w, h);
-                            publish(w, h, rgba, &mut seq);
+    #[cfg(target_os = "macos")]
+    {
+        match crate::macos_avf::open() {
+            Ok(camera) => {
+                let name = camera.name.clone();
+                let mut live = false;
+                let mut stats = PipeStats {
+                    frames: 0,
+                    dropped: 0,
+                    total_ms: 0.0,
+                    last_log: Instant::now(),
+                };
+                loop {
+                    match camera.recv_frame(Duration::from_secs(2)) {
+                        Ok((mut w, mut h, mut rgb)) => {
+                            let mut dropped = 0u64;
+                            while let Some((w2, h2, rgb2)) = camera.try_recv_frame() {
+                                w = w2;
+                                h = h2;
+                                rgb = rgb2;
+                                dropped += 1;
+                            }
+                            process_preview(w, h, rgb, &mut stats, dropped);
+                            if !live {
+                                live = true;
+                                set_status(CameraStatus::Live { name: name.clone() });
+                                eprintln!("likeness: first frame {w}×{h} → preview {PREVIEW_MAX_W}px wide");
+                            }
                         }
-                    }
-                    Err(err) => {
-                        set_status(CameraStatus::StandIn {
-                            reason: format!("camera stalled: {err}"),
-                        });
-                        standin_loop(&mut seq);
-                        return;
+                        Err(err) if err == "timeout" => {
+                            if !live {
+                                set_status(CameraStatus::Starting);
+                            }
+                        }
+                        Err(err) => {
+                            set_status(CameraStatus::StandIn {
+                                reason: format!("camera stalled: {err}"),
+                            });
+                            standin_loop();
+                            return;
+                        }
                     }
                 }
             }
+            Err(reason) => {
+                eprintln!("likeness: {reason}");
+                set_status(CameraStatus::StandIn { reason });
+                standin_loop();
+            }
         }
-        Err(reason) => {
-            set_status(CameraStatus::StandIn { reason });
-            let mut seq = 0u64;
-            standin_loop(&mut seq);
-        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        set_status(CameraStatus::StandIn {
+            reason: "camera is macOS-only for now".into(),
+        });
+        standin_loop();
     }
 }
 
-fn standin_loop(seq: &mut u64) {
+fn standin_loop() {
     let w = 960u32;
     let h = 720u32;
     let start = Instant::now();
+    let mut stats = PipeStats {
+        frames: 0,
+        dropped: 0,
+        total_ms: 0.0,
+        last_log: Instant::now(),
+    };
     loop {
         let t = start.elapsed().as_secs_f32();
         let rgb = effects::standin_rgb(w, h, t);
-        let look = Look::from_id(LOOK.load(Ordering::Relaxed));
-        let rgba = effects::apply(look, &rgb, w, h);
-        publish(w, h, rgba, seq);
+        process_preview(w, h, rgb, &mut stats, 0);
         thread::sleep(Duration::from_millis(33));
     }
-}
-
-fn open_live_camera() -> Result<(nokhwa::Camera, String), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let (tx, rx) = std::sync::mpsc::channel();
-        nokhwa::nokhwa_initialize(move |granted| {
-            let _ = tx.send(granted);
-        });
-        match rx.recv_timeout(Duration::from_secs(90)) {
-            Ok(true) => {}
-            Ok(false) => {
-                return Err("camera permission was declined".into());
-            }
-            Err(_) => {
-                return Err("camera permission timed out".into());
-            }
-        }
-    }
-
-    let devices = nokhwa::query(nokhwa::utils::ApiBackend::Auto)
-        .map_err(|e| format!("could not list cameras: {e}"))?;
-    if devices.is_empty() {
-        return Err("no camera found".into());
-    }
-
-    let preferred = devices
-        .iter()
-        .find(|d| {
-            let n = d.human_name().to_lowercase();
-            n.contains("facetime") || n.contains("built-in") || n.contains("continuity")
-        })
-        .unwrap_or(&devices[0]);
-
-    let index = preferred.index().clone();
-    let name = preferred.human_name().to_string();
-
-    let requested = nokhwa::utils::RequestedFormat::new::<nokhwa::pixel_format::RgbFormat>(
-        nokhwa::utils::RequestedFormatType::Closest(nokhwa::utils::CameraFormat::new(
-            nokhwa::utils::Resolution::new(1280, 720),
-            nokhwa::utils::FrameFormat::MJPEG,
-            30,
-        )),
-    );
-
-    let mut camera = nokhwa::Camera::new(index.clone(), requested)
-        .or_else(|_| {
-            let fallback = nokhwa::utils::RequestedFormat::new::<nokhwa::pixel_format::RgbFormat>(
-                nokhwa::utils::RequestedFormatType::AbsoluteHighestFrameRate,
-            );
-            nokhwa::Camera::new(index, fallback)
-        })
-        .map_err(|e| format!("could not open camera: {e}"))?;
-
-    camera
-        .open_stream()
-        .map_err(|e| format!("could not start camera: {e}"))?;
-    Ok((camera, name))
 }
