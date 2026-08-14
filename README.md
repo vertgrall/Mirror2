@@ -8,9 +8,17 @@ You sit. You pick a look. The camera well is always the preview. You keep a stil
 
 ## Screenshots
 
-| Clean camera | VHS · tracking · wear |
+| Clean camera | MORPH · ink drawing | VHS · tracking · wear |
+|:---:|:---:|:---:|
+| ![OFF](docs/screenshots/mirror2-off.png) | ![MORPH](docs/screenshots/mirror2-morph.png) | ![VHS](docs/screenshots/mirror2-vhs.png) |
+
+| D8 · block · digital | SAT · rain · macro | CCTV · blocky · crushed |
+|:---:|:---:|:---:|
+| ![D8](docs/screenshots/mirror2-d8.png) | ![SAT](docs/screenshots/mirror2-sat.png) | ![CCTV](docs/screenshots/mirror2-cctv.png) |
+
+| RIPPLE · water rings | Tape catalog dock (UHF · BETA · D8) |
 |:---:|:---:|
-| ![Mirror2 — OFF / clean camera](docs/screenshots/mirror2-off.png) | ![Mirror2 — VHS look with wet sliders](docs/screenshots/mirror2-vhs.png) |
+| ![RIPPLE](docs/screenshots/mirror2-ripple.png) | ![dock](docs/screenshots/mirror2-dock-tape.png) |
 
 Dock cards are photoreal still-life specimens. Chevrons page through 11 looks.
 

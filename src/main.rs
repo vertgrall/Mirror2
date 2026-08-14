@@ -1450,28 +1450,63 @@ mod slider_ui_tests {
         camera::set_preview_for_test(pw, ph, rgba);
     }
 
+    fn page_dock_to(test: &mut TestingRunner, start: usize) {
+        for _ in 0..start {
+            click_label(test, ">");
+        }
+    }
+
+    fn render_look_shot(shots: &Path, look: Look, filename: &str) {
+        camera::set_status_for_test(CameraStatus::Live {
+            name: "FaceTime HD Camera".into(),
+        });
+        seed_preview(look);
+
+        let idx = Look::RAIL.iter().position(|&l| l == look).unwrap();
+        let dock_start = idx.saturating_sub(1).min(dock_max());
+
+        let mut test =
+            TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
+        test.sync_and_update();
+        page_dock_to(&mut test, dock_start);
+        test.sync_and_update();
+        click_label(&mut test, look.tile_line());
+        test.sync_and_update();
+
+        let path = shots.join(filename);
+        test.render_to_file(&path);
+        assert!(path.exists(), "wrote {path:?}");
+    }
+
+    fn render_dock_page(shots: &Path, start: usize, filename: &str) {
+        camera::set_status_for_test(CameraStatus::Live {
+            name: "FaceTime HD Camera".into(),
+        });
+        seed_preview(Look::None);
+
+        let mut test =
+            TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
+        test.sync_and_update();
+        page_dock_to(&mut test, start);
+        test.sync_and_update();
+
+        let path = shots.join(filename);
+        test.render_to_file(&path);
+        assert!(path.exists(), "wrote {path:?}");
+    }
+
     #[test]
     fn export_readme_screenshots() {
         let shots = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/screenshots");
         std::fs::create_dir_all(&shots).expect("docs/screenshots");
 
-        camera::set_status_for_test(CameraStatus::Live {
-            name: "FaceTime HD Camera".into(),
-        });
-
-        seed_preview(Look::None);
-        let mut off = TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
-        off.sync_and_update();
-        let off_path = shots.join("mirror2-off.png");
-        off.render_to_file(&off_path);
-        assert!(off_path.exists());
-
-        seed_preview(Look::Vhs);
-        let mut vhs = TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
-        vhs.sync_and_update();
-        click_label(&mut vhs, "tracking · wear");
-        let vhs_path = shots.join("mirror2-vhs.png");
-        vhs.render_to_file(&vhs_path);
-        assert!(vhs_path.exists());
+        render_look_shot(&shots, Look::None, "mirror2-off.png");
+        render_look_shot(&shots, Look::Morph, "mirror2-morph.png");
+        render_look_shot(&shots, Look::Vhs, "mirror2-vhs.png");
+        render_look_shot(&shots, Look::D8, "mirror2-d8.png");
+        render_look_shot(&shots, Look::Sat, "mirror2-sat.png");
+        render_look_shot(&shots, Look::Cctv, "mirror2-cctv.png");
+        render_look_shot(&shots, Look::Ripple, "mirror2-ripple.png");
+        render_dock_page(&shots, 4, "mirror2-dock-tape.png");
     }
 }
