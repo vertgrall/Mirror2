@@ -20,7 +20,7 @@ You sit. You pick a look. The camera well is always the preview. You keep a stil
 |:---:|
 | ![dock](docs/screenshots/mirror2-dock-tape.png) |
 
-Dock cards are photoreal still-life specimens. Chevrons page through 11 looks.
+Dock cards are photoreal still-life specimens. Chevrons page through 15 looks.
 
 ```
  MIRROR2                           NEW TOWER
@@ -48,6 +48,10 @@ Dock cards are photoreal still-life specimens. Chevrons page through 11 looks.
 | **SAT** | rain · macro | tape (16:9 letterbox) |
 | **CCTV** | blocky · crushed | eye |
 | **RIPPLE** | water rings | water |
+| **SMEAR** | drag · temperature | optics |
+| **BREATHE** | inhale · exhale | body |
+| **FILM** | sprockets · rebate | material |
+| **WAVES** | sepia · film | material |
 
 Dock cards show photoreal still-life specimens. Chevrons page the catalog.
 

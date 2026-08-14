@@ -21,7 +21,8 @@ impl Default for VfxState {
 }
 
 impl VfxState {
-    pub fn tick(&mut self, rgb: &[u8], w: u32, h: u32) {
+    /// Advance time for this frame. Does **not** overwrite `prev_rgb` — read that first.
+    pub fn advance(&mut self, w: u32, h: u32) {
         if self.last_w != w || self.last_h != h {
             self.frame = 0;
             self.prev_rgb = None;
@@ -30,9 +31,12 @@ impl VfxState {
         }
         self.frame = self.frame.wrapping_add(1);
         self.smoke_phase += 0.016;
-        let n = (w as usize) * (h as usize) * 3;
-        if self.prev_rgb.as_ref().map(|v| v.len()) != Some(n) {
-            self.prev_rgb = Some(vec![0u8; n]);
+    }
+
+    /// Store composited RGB for temporal looks on the **next** frame.
+    pub fn commit_rgb(&mut self, rgb: &[u8]) {
+        if self.prev_rgb.as_ref().map(|v| v.len()) != Some(rgb.len()) {
+            self.prev_rgb = Some(vec![0u8; rgb.len()]);
         }
         if let Some(prev) = self.prev_rgb.as_mut() {
             prev.copy_from_slice(rgb);

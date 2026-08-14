@@ -3,9 +3,11 @@
 mod atmo;
 mod bg;
 mod beta;
+mod breathe;
 mod cctv;
 mod composite;
 mod d8;
+mod film;
 mod gx;
 mod live;
 mod morph;
@@ -13,6 +15,8 @@ mod ops;
 mod osd;
 mod params;
 mod ripple;
+mod smear;
+mod waves;
 mod sat;
 mod state;
 mod uhf;
@@ -49,10 +53,14 @@ pub enum Look {
     Sat,
     Cctv,
     Ripple,
+    Smear,
+    Breathe,
+    Film,
+    Waves,
 }
 
 impl Look {
-    pub const RAIL: [Self; 11] = [
+    pub const RAIL: [Self; 15] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -64,6 +72,10 @@ impl Look {
         Self::Sat,
         Self::Cctv,
         Self::Ripple,
+        Self::Smear,
+        Self::Breathe,
+        Self::Film,
+        Self::Waves,
     ];
 
     pub fn id(self) -> u8 {
@@ -79,6 +91,10 @@ impl Look {
             Self::Sat => 8,
             Self::Cctv => 9,
             Self::Ripple => 10,
+            Self::Smear => 11,
+            Self::Breathe => 12,
+            Self::Film => 13,
+            Self::Waves => 14,
         }
     }
 
@@ -94,6 +110,10 @@ impl Look {
             8 => Self::Sat,
             9 => Self::Cctv,
             10 => Self::Ripple,
+            11 => Self::Smear,
+            12 => Self::Breathe,
+            13 => Self::Film,
+            14 => Self::Waves,
             _ => Self::None,
         }
     }
@@ -111,6 +131,10 @@ impl Look {
             Self::Sat => "SAT",
             Self::Cctv => "CCTV",
             Self::Ripple => "RIPPLE",
+            Self::Smear => "SMEAR",
+            Self::Breathe => "BREATHE",
+            Self::Film => "FILM",
+            Self::Waves => "WAVES",
         }
     }
 
@@ -127,6 +151,10 @@ impl Look {
             Self::Sat => "rain fade · macro · 16:9 letterbox",
             Self::Cctv => "blocky green-grey · crushed",
             Self::Ripple => "water rings · VHS cam through a puddle",
+            Self::Smear => "color drag · warm or cold trail · slow shutter",
+            Self::Breathe => "inhale · exhale · whole frame scales",
+            Self::Film => "35mm inset · sprockets · grain",
+            Self::Waves => "sepia print · gate ripples · silver grain",
         }
     }
 
@@ -144,6 +172,10 @@ impl Look {
             Self::Sat => "rain · macro",
             Self::Cctv => "blocky · crushed",
             Self::Ripple => "water rings",
+            Self::Smear => "drag · temperature",
+            Self::Breathe => "inhale · exhale",
+            Self::Film => "sprockets · rebate",
+            Self::Waves => "sepia · film",
         }
     }
 
@@ -165,7 +197,7 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     let Ok(mut state) = vfx_state().lock() else {
         return ops::rgb_to_rgba(rgb, w, h);
     };
-    state.tick(rgb, w, h);
+    state.advance(w, h);
 
     let composited = composite::apply(rgb, w, h, plate.as_deref(), &bg_params);
     let wet = look_params.wet();
@@ -178,6 +210,7 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
         }
         looked
     };
+    state.commit_rgb(&composited);
     atmo::apply(&rgba, w, h, &state, &atmo_params)
 }
 
@@ -201,6 +234,10 @@ fn apply_look(
         Look::Sat => sat::apply(rgb, w, h, state, params),
         Look::Cctv => cctv::apply(rgb, w, h, state, params),
         Look::Ripple => ripple::apply(rgb, w, h, state, params),
+        Look::Smear => smear::apply(rgb, w, h, state, params),
+        Look::Breathe => breathe::apply(rgb, w, h, state, params),
+        Look::Film => film::apply(rgb, w, h, state, params),
+        Look::Waves => waves::apply(rgb, w, h, state, params),
     }
 }
 
@@ -427,7 +464,113 @@ mod tests {
         assert!(!BackgroundParams::default().enabled);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 11);
+        assert_eq!(Look::RAIL.len(), 15);
+    }
+
+    #[test]
+    fn film_bezel_is_dark() {
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Film));
+        let rgb = vec![200u8; 640 * 480 * 3];
+        let out = apply(Look::Film, &rgb, 640, 480);
+        assert!(out[0] < 40, "outer shell should be dark");
+        let inner = out[((240 * 640) + 320) * 4];
+        assert!(inner > 100, "inner picture should stay bright");
+    }
+
+    #[test]
+    fn waves_applies_sepia_and_warp() {
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        let mut p = LookParams::defaults(Look::Waves);
+        p.values[1] = 1.0;
+        p.values[2] = 0.8;
+        p.values[3] = 0.5;
+        set_params(p);
+        let mut rgb = vec![80u8; 64 * 48 * 3];
+        for i in 0..64 * 48 {
+            rgb[i * 3] = 40;
+            rgb[i * 3 + 1] = 160;
+            rgb[i * 3 + 2] = 200;
+        }
+        let dry = ops::rgb_to_rgba(&rgb, 64, 48);
+        let out = apply(Look::Waves, &rgb, 64, 48);
+        assert_ne!(out, dry);
+        let mid = out[(24 * 64 + 32) * 4];
+        assert!(mid > dry[(24 * 64 + 32) * 4], "sepia should lift red channel");
+    }
+
+    #[test]
+    fn smear_uses_previous_frame() {
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Smear));
+        let mut a = vec![20u8; 32 * 24 * 3];
+        let mut b = vec![220u8; 32 * 24 * 3];
+        for i in 0..32 * 24 {
+            a[i * 3 + 2] = 200;
+            b[i * 3] = 240;
+        }
+        let first = apply(Look::Smear, &a, 32, 24);
+        let second = apply(Look::Smear, &b, 32, 24);
+        assert_ne!(
+            second,
+            ops::rgb_to_rgba(&b, 32, 24),
+            "second smear frame must differ from dry camera"
+        );
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn smear_warm_and_cold_differ() {
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        let mut rgb_a = vec![40u8; 32 * 24 * 3];
+        let mut rgb_b = vec![200u8; 32 * 24 * 3];
+        for i in 0..32 * 24 {
+            rgb_a[i * 3 + 1] = 180;
+            rgb_b[i * 3 + 2] = 220;
+        }
+
+        let mut warm = LookParams::defaults(Look::Smear);
+        warm.values[1] = 1.0;
+        warm.values[2] = 0.85;
+        warm.values[3] = 0.6;
+        set_params(warm);
+        let warm_out = apply(Look::Smear, &rgb_a, 32, 24);
+        let warm_out_b = apply(Look::Smear, &rgb_b, 32, 24);
+
+        let mut cold = LookParams::defaults(Look::Smear);
+        cold.values[1] = 0.0;
+        cold.values[2] = 0.85;
+        cold.values[3] = 0.6;
+        set_params(cold);
+        let cold_out = apply(Look::Smear, &rgb_a, 32, 24);
+
+        assert_ne!(warm_out, cold_out, "warm vs cold tint must diverge");
+        assert_ne!(warm_out, warm_out_b, "second frame should smear differently");
+    }
+
+    #[test]
+    fn smear_stays_in_bounds() {
+        set_params(LookParams::defaults(Look::Smear));
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        let rgb = vec![90u8; 640 * 480 * 3];
+        let out = apply(Look::Smear, &rgb, 640, 480);
+        assert_eq!(out.len(), 640 * 480 * 4);
+        assert!(out.chunks(4).all(|px| px[3] == 255));
     }
 
     #[test]

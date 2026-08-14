@@ -1,4 +1,4 @@
-//! Cursor-dark tokens from the FX canvas mock. Flat. No paper.
+//! UI themes — dark editor, frosted glass, snow white.
 
 use freya::prelude::{Border, BorderWidth, Color};
 
@@ -20,8 +20,17 @@ pub const STATUS_MAX_CHARS: usize = 14;
 pub const GAP: f32 = 8.;
 
 /// Effect slider track width — must be px, not fill, or Freya's slider gets 0 width.
-/// 480 − 8 − 52 (label) − 8 − 32 (value) − 8 = 372, leave a hair.
-pub const SLIDER_W: f32 = 360.;
+pub const SLIDER_LABEL_W: f32 = 52.;
+pub const SLIDER_VALUE_W: f32 = 30.;
+/// Gap between track end and numeric readout.
+pub const SLIDER_VALUE_GAP: f32 = 6.;
+pub const SLIDER_W: f32 = WINDOW_W
+    - GAP
+    - SLIDER_LABEL_W
+    - GAP
+    - SLIDER_VALUE_GAP
+    - SLIDER_VALUE_W
+    - GAP;
 
 /// Live VFX + preview run at this width (4:3). Full sensor res is capture-only.
 pub const PREVIEW_MAX_W: u32 = 640;
@@ -67,9 +76,46 @@ pub fn border_left(color: Color) -> Border {
     edge(color, 0., 0., 0., 1.)
 }
 
-/// Canvas dark palette (`canvasPaletteDark` / `useHostTheme`).
-/// Alpha fills are composited on editor `#181818` so Freya gets the same
-/// opaque RGB the mock shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Theme {
+    Dark,
+    Glass,
+    Snow,
+}
+
+impl Theme {
+    pub const ALL: [Self; 3] = [Self::Dark, Self::Glass, Self::Snow];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "DARK",
+            Self::Glass => "GLASS",
+            Self::Snow => "SNOW",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Dark => Self::Glass,
+            Self::Glass => Self::Snow,
+            Self::Snow => Self::Dark,
+        }
+    }
+
+    /// macOS window transparency — desktop shows through the glass theme.
+    pub fn window_transparent(self) -> bool {
+        matches!(self, Self::Glass)
+    }
+
+    pub fn palette(self) -> Palette {
+        match self {
+            Self::Dark => Palette::dark(),
+            Self::Glass => Palette::glass(),
+            Self::Snow => Palette::snow(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Palette {
     pub bg: Color,
@@ -91,34 +137,94 @@ pub struct Palette {
 
 impl Palette {
     pub fn app() -> Self {
+        Theme::Dark.palette()
+    }
+
+    /// Cursor-dark — default editor mock.
+    pub fn dark() -> Self {
         Self {
-            // editor #181818
             bg: Color::from_rgb(24, 24, 24),
             surface: Color::from_rgb(24, 24, 24),
-            // fill.tertiary #E4E4E411 on editor
             control: Color::from_rgb(37, 37, 37),
-            // fill.secondary #E4E4E41E on editor — chevrons
             fill: Color::from_rgb(48, 48, 48),
-            // fill.primary #E4E4E430 on editor — active card
             fill_hi: Color::from_rgb(63, 63, 63),
-            // foreground #E4E4E4
             text: Color::from_rgb(228, 228, 228),
-            // line at 70% of primary
             text_dim: Color::from_rgb(160, 160, 160),
-            // foregroundTertiary #E4E4E45E
             muted: Color::from_rgb(94, 94, 94),
-            // stroke.primary #E4E4E433 on editor
             stroke: Color::from_rgb(74, 74, 74),
-            // stroke.secondary #E4E4E41F on editor
             stroke_soft: Color::from_rgb(52, 52, 52),
-            // stroke.tertiary #E4E4E414 on editor
             stroke_hair: Color::from_rgb(40, 40, 40),
-            // accent #599CE7
             accent: Color::from_rgb(89, 156, 231),
-            // buttonForeground #191c22
             on_accent: Color::from_rgb(25, 28, 34),
             shutter: Color::from_rgb(220, 38, 38),
             shutter_pressed: Color::from_rgb(168, 28, 28),
         }
+    }
+
+    /// Frosted glass — translucent layers, cool edge light, icy accent.
+    pub fn glass() -> Self {
+        Self {
+            bg: Color::from_argb(150, 16, 20, 28),
+            surface: Color::from_argb(120, 22, 28, 38),
+            control: Color::from_argb(165, 32, 40, 52),
+            fill: Color::from_argb(190, 48, 58, 72),
+            fill_hi: Color::from_argb(215, 62, 74, 92),
+            text: Color::from_argb(240, 236, 242, 252),
+            text_dim: Color::from_argb(210, 190, 200, 220),
+            muted: Color::from_argb(170, 140, 155, 175),
+            stroke: Color::from_argb(200, 255, 255, 255),
+            stroke_soft: Color::from_argb(130, 200, 210, 230),
+            stroke_hair: Color::from_argb(90, 160, 175, 200),
+            accent: Color::from_argb(255, 120, 190, 255),
+            on_accent: Color::from_rgb(16, 22, 32),
+            shutter: Color::from_rgb(220, 38, 38),
+            shutter_pressed: Color::from_rgb(168, 28, 28),
+        }
+    }
+
+    /// Snow white — paper-bright chrome, soft gray hairlines.
+    pub fn snow() -> Self {
+        Self {
+            bg: Color::from_rgb(252, 252, 254),
+            surface: Color::from_rgb(255, 255, 255),
+            control: Color::from_rgb(245, 247, 250),
+            fill: Color::from_rgb(236, 240, 245),
+            fill_hi: Color::from_rgb(224, 230, 238),
+            text: Color::from_rgb(28, 32, 38),
+            text_dim: Color::from_rgb(72, 78, 88),
+            muted: Color::from_rgb(140, 148, 158),
+            stroke: Color::from_rgb(208, 214, 224),
+            stroke_soft: Color::from_rgb(220, 226, 234),
+            stroke_hair: Color::from_rgb(232, 236, 242),
+            accent: Color::from_rgb(72, 132, 220),
+            on_accent: Color::from_rgb(255, 255, 255),
+            shutter: Color::from_rgb(220, 38, 38),
+            shutter_pressed: Color::from_rgb(168, 28, 28),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn themes_cycle() {
+        assert_eq!(Theme::Dark.next(), Theme::Glass);
+        assert_eq!(Theme::Glass.next(), Theme::Snow);
+        assert_eq!(Theme::Snow.next(), Theme::Dark);
+    }
+
+    #[test]
+    fn glass_uses_alpha() {
+        assert!(Palette::glass().bg.a() < 255);
+        assert!(Palette::glass().control.a() < 255);
+    }
+
+    #[test]
+    fn snow_is_bright() {
+        let p = Palette::snow();
+        assert!(p.bg.r() > 250);
+        assert!(p.text.r() < 40);
     }
 }

@@ -303,6 +303,90 @@ impl Look {
                     default: 0.45,
                 },
             ],
+            Look::Smear => &[
+                WET,
+                ParamDef {
+                    label: "warm",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "lag",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.82,
+                },
+                ParamDef {
+                    label: "spread",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.72,
+                },
+            ],
+            Look::Breathe => &[
+                WET,
+                ParamDef {
+                    label: "depth",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "pace",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "hold",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Film => &[
+                WET,
+                ParamDef {
+                    label: "grain",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "warm",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "frame",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.72,
+                },
+            ],
+            Look::Waves => &[
+                WET,
+                ParamDef {
+                    label: "sepia",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.78,
+                },
+                ParamDef {
+                    label: "wave",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "grain",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+            ],
         }
     }
 }

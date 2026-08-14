@@ -7,6 +7,8 @@ mod effects;
 mod keep;
 #[cfg(target_os = "macos")]
 mod macos_avf;
+#[cfg(target_os = "macos")]
+mod macos_icon;
 mod shutter;
 mod stage;
 mod stills;
@@ -28,31 +30,41 @@ use backgrounds::label as bg_label;
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
-use theme::Palette;
+use theme::{Palette, Theme};
+
+const ICON: &[u8] = include_bytes!("../resources/icon-window.png");
 
 fn main() {
-    let palette = Palette::app();
     launch(
         LaunchConfig::new()
             .with_future(|_proxy| async move {
                 // AVFoundation needs the app run loop up before it will deliver frames.
                 Timer::after(Duration::from_millis(200)).await;
+                #[cfg(target_os = "macos")]
+                macos_icon::set_dock_icon(ICON);
                 camera::start();
             })
             .with_window(
                 WindowConfig::new(app)
                     .with_title("Mirror2")
+                    .with_icon(LaunchConfig::window_icon(ICON))
+                    .with_window_handle(|_| {
+                        #[cfg(target_os = "macos")]
+                        macos_icon::set_dock_icon(ICON);
+                    })
                     .with_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
                     .with_min_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
                     .with_max_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
                     .with_resizable(false)
-                    .with_background(palette.bg),
+                    .with_transparency(true)
+                    .with_background(Color::TRANSPARENT),
             ),
     );
 }
 
 fn app() -> Element {
-    let palette = Palette::app();
+    let ui_theme = use_state(|| Theme::Dark);
+    let palette = ui_theme().palette();
     let look = use_state(|| Look::None);
     let mut dock_page = use_state(|| 0usize);
     let params = use_state(|| LookParams::defaults(Look::None));
@@ -206,7 +218,7 @@ fn app() -> Element {
                 .height(Size::fill())
                 .spacing(theme::GAP)
                 .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-                .child(header(palette, &status))
+                .child(header(palette, &status, ui_theme))
                 .child(stage_well(palette, current_look, seq))
                 .child(shutter_button(palette, shutter, shutter_now, countdown))
                 .child(look_fx_panel(
@@ -286,7 +298,8 @@ fn px_spacer(w: f32) -> Element {
     rect().width(Size::px(w)).height(Size::px(1.)).into()
 }
 
-fn header(palette: Palette, status: &CameraStatus) -> Element {
+fn header(palette: Palette, status: &CameraStatus, mut ui_theme: State<Theme>) -> Element {
+    let theme_label = ui_theme().label();
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
@@ -304,6 +317,24 @@ fn header(palette: Palette, status: &CameraStatus) -> Element {
                         .font_size(theme::FONT_SMALL)
                         .font_weight(FontWeight::BOLD)
                         .color(palette.text),
+                )
+                .child(gutter())
+                .child(
+                    rect()
+                        .padding(Gaps::new(1., 5., 1., 5.))
+                        .background(palette.fill)
+                        .border(theme::border_all(palette.stroke_soft))
+                        .on_mouse_up(move |_| {
+                            ui_theme.set(ui_theme().next());
+                            request_redraw();
+                        })
+                        .child(
+                            label()
+                                .text(theme_label)
+                                .font_size(9.)
+                                .font_weight(FontWeight::BOLD)
+                                .color(palette.accent),
+                        ),
                 ),
         )
         .child(
@@ -693,28 +724,34 @@ fn kit_slider(
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
         .height(Size::px(28.))
-        .main_align(Alignment::Start)
         .cross_align(Alignment::Center)
-        .spacing(8.)
+        .spacing(theme::GAP)
+        .child(gutter())
         .child(
             label()
                 .text(def.label)
                 .font_size(10.)
                 .color(palette.text)
-                .width(Size::px(52.)),
+                .width(Size::px(theme::SLIDER_LABEL_W)),
         )
         .child(
-            Slider::new(on_moved)
-                .value(pct)
-                .size(Size::px(theme::SLIDER_W))
-                .direction(Direction::Horizontal),
-        )
-        .child(
-            label()
-                .text(value_label)
-                .font_size(10.)
-                .color(palette.muted)
-                .width(Size::px(32.)),
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(theme::SLIDER_VALUE_GAP)
+                .child(
+                    Slider::new(on_moved)
+                        .value(pct)
+                        .size(Size::px(theme::SLIDER_W))
+                        .direction(Direction::Horizontal),
+                )
+                .child(
+                    label()
+                        .text(value_label)
+                        .font_size(10.)
+                        .color(palette.muted)
+                        .width(Size::px(theme::SLIDER_VALUE_W)),
+                ),
         )
         .into()
 }
@@ -1067,7 +1104,7 @@ mod slider_ui_tests {
                     .filter(|_| (node.layout().area.size.width - theme::SLIDER_W).abs() < 1.0)
                     .map(|_| node)
             })
-            .expect("slider track should be 220px wide");
+            .expect("slider track should match SLIDER_W");
         let area = slider.layout().area;
         // Click the left side of the track — Freya maps MouseDown to PointerDown.
         let x = area.min_x() as f64 + 12.0;

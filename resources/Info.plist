@@ -28,5 +28,9 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Mirror2 looks through the camera so you can pick a look and keep a still.</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 </dict>
 </plist>

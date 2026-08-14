@@ -49,6 +49,10 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Sat => still_for!(Look::Sat, "../assets/fx/sat.jpg"),
         Look::Cctv => still_for!(Look::Cctv, "../assets/fx/cctv.jpg"),
         Look::Ripple => still_for!(Look::Ripple, "../assets/fx/ripple.jpg"),
+        Look::Smear => still_for!(Look::Smear, "../assets/fx/smear.jpg"),
+        Look::Breathe => still_for!(Look::Breathe, "../assets/fx/breathe.jpg"),
+        Look::Film => still_for!(Look::Film, "../assets/fx/film.jpg"),
+        Look::Waves => still_for!(Look::Waves, "../assets/fx/waves.jpg"),
     }
 }
 
