@@ -163,6 +163,13 @@ pub fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
     (a as f32 + (b as f32 - a as f32) * t.clamp(0.0, 1.0)) as u8
 }
 
+/// Top bar height and active picture height for 16:9 content in a 4:3 frame.
+pub fn letterbox_bars_16x9(h: u32) -> (usize, usize) {
+    let active = ((h as f32) * 9.0 / 12.0).round() as usize;
+    let bar = ((h as usize).saturating_sub(active)) / 2;
+    (bar, active)
+}
+
 pub fn hash2d(x: f32, y: f32) -> f32 {
     let mut n = x.sin() * 43758.5453 + y.cos() * 23421.631;
     n = (n.fract().abs() * 43758.5453).fract();

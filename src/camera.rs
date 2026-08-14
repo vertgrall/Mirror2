@@ -103,12 +103,17 @@ pub fn status() -> CameraStatus {
         .unwrap_or(CameraStatus::Starting)
 }
 
+#[cfg(test)]
+pub fn set_status_for_test(next: CameraStatus) {
+    set_status(next);
+}
+
 pub fn start() {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
     thread::Builder::new()
-        .name("likeness-camera".into())
+        .name("mirror2-camera".into())
         .spawn(camera_loop)
         .expect("spawn camera thread");
 }
@@ -156,7 +161,7 @@ impl PipeStats {
                 0.0
             };
             eprintln!(
-                "likeness: preview pipe  {:.1} ms/frame avg  {} fps  {} dropped",
+                "mirror2: preview pipe  {:.1} ms/frame avg  {} fps  {} dropped",
                 avg,
                 self.frames / 3,
                 self.dropped,
@@ -207,7 +212,7 @@ fn camera_loop() {
                             if !live {
                                 live = true;
                                 set_status(CameraStatus::Live { name: name.clone() });
-                                eprintln!("likeness: first frame {w}×{h} → preview {PREVIEW_MAX_W}px wide");
+                                eprintln!("mirror2: first frame {w}×{h} → preview {PREVIEW_MAX_W}px wide");
                             }
                         }
                         Err(err) if err == "timeout" => {
@@ -226,7 +231,7 @@ fn camera_loop() {
                 }
             }
             Err(reason) => {
-                eprintln!("likeness: {reason}");
+                eprintln!("mirror2: {reason}");
                 set_status(CameraStatus::StandIn { reason });
                 standin_loop();
             }

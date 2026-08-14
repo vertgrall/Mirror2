@@ -7,7 +7,7 @@ use image::ImageReader;
 
 pub fn backgrounds_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join("Pictures/Likeness/Backgrounds")
+    PathBuf::from(home).join("Pictures/Mirror2/Backgrounds")
 }
 
 pub fn ensure_dir() {

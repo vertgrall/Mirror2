@@ -26,6 +26,16 @@ pub fn burn_cctv_stamp(rgba: &mut [u8], w: u32, h: u32, frame: u64) {
     draw_string(rgba, w, h, 8, 8, &text, (80, 255, 120), 0.85);
 }
 
+/// Frozen MiniDV date — digital tape, not a clock.
+pub const D8_DATE: &str = "JAN 01 2000";
+
+pub fn burn_d8_date(rgba: &mut [u8], w: u32, h: u32, opacity: f32) {
+    if opacity < 0.01 {
+        return;
+    }
+    draw_string(rgba, w, h, w.saturating_sub(108), 8, D8_DATE, (240, 240, 255), opacity);
+}
+
 fn draw_string(
     rgba: &mut [u8],
     w: u32,

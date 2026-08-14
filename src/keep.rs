@@ -1,4 +1,4 @@
-//! Keep a still. Files land in ~/Pictures/Likeness.
+//! Keep a still. Files land in ~/Pictures/Mirror2.
 
 use std::fs::{self, File};
 use std::io::BufWriter;
@@ -18,14 +18,14 @@ pub struct KeepShot {
 
 pub fn keep_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join("Pictures/Likeness")
+    PathBuf::from(home).join("Pictures/Mirror2")
 }
 
 pub fn save_keep(id: u64, width: u32, height: u32, rgba: &[u8]) -> Result<KeepShot, String> {
     let dir = keep_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("could not make keep folder: {e}"))?;
     let stamp = chrono::Local::now().format("%Y-%m-%d-%H%M%S");
-    let path = dir.join(format!("likeness-{stamp}-{id}.png"));
+    let path = dir.join(format!("mirror2-{stamp}-{id}.png"));
     write_png(&path, width, height, rgba)?;
     let (tw, th, thumb) = effects::downscale_rgba(rgba, width, height, 140);
     Ok(KeepShot {

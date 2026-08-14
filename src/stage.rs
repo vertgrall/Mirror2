@@ -1,4 +1,4 @@
-//! Live likeness, countdown, flash. Flat — no tape, no frame, no grain.
+//! Live preview, countdown, flash. Flat — no tape, no frame, no grain.
 
 use std::sync::{Arc, Mutex, OnceLock};
 

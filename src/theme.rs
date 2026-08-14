@@ -9,6 +9,12 @@ pub const WINDOW_W: f32 = VIEWFINDER_W;
 /// header 20 + well 360 + shutter 56 + fx band 164 + dock 88 + 4×8 gaps + 8 top
 pub const WINDOW_H: f32 = 728.;
 pub const FX_BAND_H: f32 = 164.;
+pub const HEADER_H: f32 = 20.;
+pub const SHUTTER_D: f32 = 56.;
+/// Equal walls so the button sits on x = 240. Never flex — Freya flex is 100% parent.
+pub const SHUTTER_SIDE: f32 = (WINDOW_W - SHUTTER_D) / 2.;
+/// Header status. Long camera names die here, not off the glass.
+pub const STATUS_MAX_CHARS: usize = 14;
 
 /// Vertical rhythm between the stacked blocks.
 pub const GAP: f32 = 8.;
@@ -28,8 +34,13 @@ pub const DOCK_VISIBLE: usize = 3;
 pub const DOCK_H: f32 = 88.;
 pub const CARD_H: f32 = 72.;
 pub const CARD_PAD: f32 = 8.;
+/// Name + line stamped on the boot of the still.
+pub const CARD_CAPTION_H: f32 = 32.;
 pub const CARD_RADIUS: f32 = 0.;
 pub const CHEVRON_W: f32 = 32.;
+/// Three equal slots between the walls. No percent. No leftover padding.
+pub const CARD_SLOT_W: f32 = (WINDOW_W - CHEVRON_W * 2.) / DOCK_VISIBLE as f32;
+pub const DOCK_CARDS_W: f32 = WINDOW_W - CHEVRON_W * 2.;
 
 fn edge(color: Color, top: f32, right: f32, bottom: f32, left: f32) -> Border {
     Border::new().fill(color).width(BorderWidth {

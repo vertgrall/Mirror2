@@ -198,6 +198,111 @@ impl Look {
                     default: 0.4,
                 },
             ],
+            Look::Uhf => &[
+                WET,
+                ParamDef {
+                    label: "snow",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "roll",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "tint",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Beta => &[
+                WET,
+                ParamDef {
+                    label: "drop",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.4,
+                },
+                ParamDef {
+                    label: "luma",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "edge",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::D8 => &[
+                WET,
+                ParamDef {
+                    label: "block",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "drop",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+                ParamDef {
+                    label: "date",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.85,
+                },
+            ],
+            Look::Live => &[
+                WET,
+                ParamDef {
+                    label: "tally",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.75,
+                },
+                ParamDef {
+                    label: "comb",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "crush",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.6,
+                },
+            ],
+            Look::Sat => &[
+                WET,
+                ParamDef {
+                    label: "rain",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.5,
+                },
+                ParamDef {
+                    label: "block",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "sat",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Likeness — outsider spiritual successor to Photo Booth.
+//! Mirror2 — outsider spiritual successor to Photo Booth.
 //! No curtains. No booth. No fake materials. You, kept.
 
 mod backgrounds;
@@ -9,6 +9,7 @@ mod keep;
 mod macos_avf;
 mod shutter;
 mod stage;
+mod stills;
 mod theme;
 mod vfx;
 
@@ -40,9 +41,11 @@ fn main() {
             })
             .with_window(
                 WindowConfig::new(app)
-                    .with_title("Likeness")
+                    .with_title("Mirror2")
                     .with_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
                     .with_min_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
+                    .with_max_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
+                    .with_resizable(false)
                     .with_background(palette.bg),
             ),
     );
@@ -254,31 +257,66 @@ fn start_countdown(mut shutter: State<Shutter>) {
     }
 }
 
+/// Header status. Short enough to live in the right 200px of a 480 window.
+fn status_copy(status: &CameraStatus) -> String {
+    match status {
+        CameraStatus::Starting => "asking camera".into(),
+        CameraStatus::Live { name } => clip_status(name),
+        CameraStatus::StandIn { reason } => clip_status(reason),
+    }
+}
+
+fn clip_status(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.contains("FaceTime") {
+        return "FaceTime".into();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() <= theme::STATUS_MAX_CHARS {
+        return trimmed.to_string();
+    }
+    chars.into_iter().take(theme::STATUS_MAX_CHARS).collect()
+}
+
+fn gutter() -> Element {
+    rect().width(Size::px(theme::GAP)).into()
+}
+
+fn px_spacer(w: f32) -> Element {
+    rect().width(Size::px(w)).height(Size::px(1.)).into()
+}
+
 fn header(palette: Palette, status: &CameraStatus) -> Element {
-    let status_line = match status {
-        CameraStatus::Starting => "asking the camera".to_string(),
-        CameraStatus::Live { name } => name.clone(),
-        CameraStatus::StandIn { reason } => reason.clone(),
-    };
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
-        .height(Size::px(20.))
+        .height(Size::px(theme::HEADER_H))
         .main_align(Alignment::SpaceBetween)
         .cross_align(Alignment::Center)
-        .padding(Gaps::new(0., theme::GAP, 0., theme::GAP))
         .child(
-            label()
-                .text("LIKENESS")
-                .font_size(theme::FONT_SMALL)
-                .font_weight(FontWeight::BOLD)
-                .color(palette.text),
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .child(gutter())
+                .child(
+                    label()
+                        .text("MIRROR2")
+                        .font_size(theme::FONT_SMALL)
+                        .font_weight(FontWeight::BOLD)
+                        .color(palette.text),
+                ),
         )
         .child(
-            label()
-                .text(status_line)
-                .font_size(theme::FONT_SMALL)
-                .color(palette.muted),
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(status_copy(status))
+                        .font_size(theme::FONT_SMALL)
+                        .color(palette.muted),
+                )
+                .child(gutter()),
         )
         .into()
 }
@@ -302,25 +340,37 @@ fn look_fx_panel(
         .width(Size::px(theme::WINDOW_W))
         .height(Size::px(theme::FX_BAND_H))
         .spacing(4.)
-        .padding(Gaps::new(theme::GAP, theme::GAP, 0., theme::GAP))
+        .padding(Gaps::new(theme::GAP, 0., 0., 0.))
         .child(
             rect()
                 .horizontal()
-                .width(Size::fill())
+                .width(Size::px(theme::WINDOW_W))
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
                 .child(
-                    label()
-                        .text(format!("{}  ·  {}", look.label(), look.tile_line()))
-                        .font_size(theme::FONT_SMALL)
-                        .font_weight(FontWeight::BOLD)
-                        .color(palette.text),
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::Center)
+                        .child(gutter())
+                        .child(
+                            label()
+                                .text(format!("{}  ·  {}", look.label(), look.tile_line()))
+                                .font_size(theme::FONT_SMALL)
+                                .font_weight(FontWeight::BOLD)
+                                .color(palette.text),
+                        ),
                 )
                 .child(
-                    label()
-                        .text(count)
-                        .font_size(theme::FONT_SMALL)
-                        .color(palette.muted),
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(count)
+                                .font_size(theme::FONT_SMALL)
+                                .color(palette.muted),
+                        )
+                        .child(gutter()),
                 ),
         );
 
@@ -348,10 +398,8 @@ fn look_dock(
 
     let mut cards = rect()
         .horizontal()
-        .width(Size::flex(1.0))
+        .width(Size::px(theme::DOCK_CARDS_W))
         .height(Size::px(theme::CARD_H))
-        .padding(Gaps::new(0., 10., 0., 10.))
-        .spacing(8.)
         .cross_align(Alignment::Center);
     for &look in shown {
         cards = cards.child(look_card(
@@ -435,37 +483,53 @@ fn look_card(
     params: State<LookParams>,
     controls_rev: State<u32>,
 ) -> Element {
+    let text_w = theme::CARD_SLOT_W - theme::CARD_PAD * 2.;
     rect()
-        .width(Size::percent(33.0))
+        .width(Size::px(theme::CARD_SLOT_W))
         .height(Size::px(theme::CARD_H))
         .corner_radius(theme::CARD_RADIUS)
-        .padding(Gaps::new_all(theme::CARD_PAD))
-        .background(if selected {
-            palette.fill_hi
-        } else {
-            palette.fill
-        })
+        .background(palette.bg)
         .border(theme::border_all(if selected {
-            palette.stroke
+            palette.accent
         } else {
             palette.stroke
         }))
-        .spacing(4.)
+        .overflow(Overflow::Clip)
         .on_press(wear_handler(look, look_state, params, controls_rev))
         .child(
-            label()
-                .text(look.label())
-                .font_size(theme::FONT_SMALL)
-                .font_weight(FontWeight::BOLD)
-                .color(palette.text)
-                .on_press(wear_handler(look, look_state, params, controls_rev)),
+            canvas(RenderCallback::new({
+                move |ctx| stills::draw_still(ctx, look)
+            }))
+            .width(Size::px(theme::CARD_SLOT_W))
+            .height(Size::px(theme::CARD_H))
+            .key(look.id()),
         )
         .child(
-            label()
-                .text(look.tile_line())
-                .font_size(theme::FONT_SMALL)
-                .color(palette.text_dim)
-                .on_press(wear_handler(look, look_state, params, controls_rev)),
+            rect()
+                .position(Position::new_absolute().bottom(0.).left(0.))
+                .width(Size::px(theme::CARD_SLOT_W))
+                .height(Size::px(theme::CARD_CAPTION_H))
+                .padding(Gaps::new(2., theme::CARD_PAD, 4., theme::CARD_PAD))
+                .background(Color::from_argb(210, 24, 24, 24))
+                .spacing(1.)
+                .on_press(wear_handler(look, look_state, params, controls_rev))
+                .child(
+                    label()
+                        .text(look.label())
+                        .font_size(theme::FONT_SMALL)
+                        .font_weight(FontWeight::BOLD)
+                        .color(palette.text)
+                        .width(Size::px(text_w))
+                        .on_press(wear_handler(look, look_state, params, controls_rev)),
+                )
+                .child(
+                    label()
+                        .text(look.tile_line())
+                        .font_size(theme::FONT_SMALL)
+                        .color(palette.text_dim)
+                        .width(Size::px(text_w))
+                        .on_press(wear_handler(look, look_state, params, controls_rev)),
+                ),
         )
         .into()
 }
@@ -627,7 +691,7 @@ fn kit_slider(
 
     rect()
         .horizontal()
-        .width(Size::fill())
+        .width(Size::px(theme::WINDOW_W))
         .height(Size::px(28.))
         .main_align(Alignment::Start)
         .cross_align(Alignment::Center)
@@ -801,12 +865,13 @@ fn shutter_button(
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
-        .main_align(Alignment::Center)
+        .height(Size::px(theme::SHUTTER_D))
+        .child(px_spacer(theme::SHUTTER_SIDE))
         .child(
             rect()
-                .width(Size::px(56.))
-                .height(Size::px(56.))
-                .corner_radius(28.)
+                .width(Size::px(theme::SHUTTER_D))
+                .height(Size::px(theme::SHUTTER_D))
+                .corner_radius(theme::SHUTTER_D / 2.)
                 .background(if busy {
                     palette.shutter_pressed
                 } else {
@@ -824,6 +889,7 @@ fn shutter_button(
                 .on_press(move |_| start_countdown(shutter))
                 .child(shutter_face(label_text)),
         )
+        .child(px_spacer(theme::SHUTTER_SIDE))
         .into()
 }
 
@@ -886,8 +952,8 @@ fn footer(palette: Palette, err: Option<String>) -> Element {
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
         .height(Size::px(16.))
-        .padding(Gaps::new(0., theme::GAP, 0., theme::GAP))
         .main_align(Alignment::End)
+        .cross_align(Alignment::Center)
         .child(
             rect().on_mouse_up(|_| keep::reveal_folder()).child(
                 label()
@@ -896,6 +962,7 @@ fn footer(palette: Palette, err: Option<String>) -> Element {
                     .color(palette.muted),
             ),
         )
+        .child(gutter())
         .into()
 }
 
@@ -1122,7 +1189,7 @@ mod slider_ui_tests {
             "well and dock must be the same width"
         );
 
-        let out = std::env::temp_dir().join("likeness-dock-verify.png");
+        let out = std::env::temp_dir().join("mirror2-dock-verify.png");
         test.render_to_file(&out);
         assert!(out.exists(), "wrote {out:?}");
     }
@@ -1179,7 +1246,7 @@ mod slider_ui_tests {
         assert!(has_label(&test, "track"));
         assert!(has_label(&test, "chroma"));
         assert!(has_label(&test, "wear"));
-        let out = std::env::temp_dir().join("likeness-vhs-fx-verify.png");
+        let out = std::env::temp_dir().join("mirror2-vhs-fx-verify.png");
         test.render_to_file(&out);
     }
 
@@ -1230,8 +1297,8 @@ mod slider_ui_tests {
             .find(|node, element| {
                 Rect::try_downcast(element)
                     .filter(|_| {
-                        (node.layout().area.size.width - 56.0).abs() < 1.0
-                            && (node.layout().area.size.height - 56.0).abs() < 1.0
+                        (node.layout().area.size.width - theme::SHUTTER_D).abs() < 1.0
+                            && (node.layout().area.size.height - theme::SHUTTER_D).abs() < 1.0
                     })
                     .map(|_| node)
             })
@@ -1260,5 +1327,114 @@ mod slider_ui_tests {
         test.sync_and_update();
         test.press_key(Key::Character(" ".into()));
         assert!(has_label(&test, "3"), "spacebar starts the 3-2-1 count");
+    }
+
+    fn all_label_boxes(test: &TestingRunner) -> Vec<(String, f32, f32, f32, f32)> {
+        test.find_many(|node, element| {
+            Label::try_downcast(element).map(|label| {
+                let a = node.layout().area;
+                (
+                    label.text.as_ref().to_string(),
+                    a.min_x(),
+                    a.min_y(),
+                    a.max_x(),
+                    a.max_y(),
+                )
+            })
+        })
+    }
+
+    fn shutter_box(test: &TestingRunner) -> (f32, f32, f32, f32) {
+        let btn = test
+            .find(|node, element| {
+                Rect::try_downcast(element)
+                    .filter(|_| {
+                        (node.layout().area.size.width - theme::SHUTTER_D).abs() < 1.0
+                            && (node.layout().area.size.height - theme::SHUTTER_D).abs() < 1.0
+                    })
+                    .map(|_| node)
+            })
+            .expect("56px shutter");
+        let a = btn.layout().area;
+        (a.min_x(), a.min_y(), a.size.width, a.size.height)
+    }
+
+    #[test]
+    fn clip_status_fits_the_header_slot() {
+        assert_eq!(clip_status("FaceTime HD Camera"), "FaceTime");
+        assert_eq!(
+            clip_status("FaceTime HD Camera (Built-in)"),
+            "FaceTime"
+        );
+        assert_eq!(clip_status("asking camera"), "asking camera");
+        let long = clip_status("camera stalled: permission denied forever");
+        assert!(
+            long.chars().count() <= theme::STATUS_MAX_CHARS,
+            "clipped status is still too long: {long}"
+        );
+        assert_eq!(
+            status_copy(&CameraStatus::Live {
+                name: "FaceTime HD Camera".into()
+            }),
+            "FaceTime"
+        );
+    }
+
+    #[test]
+    fn layout_stone_nothing_walks_off_the_glass() {
+        camera::set_status_for_test(CameraStatus::Live {
+            name: "FaceTime HD Camera".into(),
+        });
+        const W: f32 = theme::WINDOW_W;
+        const H: f32 = theme::WINDOW_H;
+        let mut test = TestingRunner::new(app, Size2D::new(W, H), |_| {}, 1.0).0;
+        test.sync_and_update();
+
+        assert!(has_label(&test, "FaceTime"), "long camera name must shorten");
+        assert!(
+            !has_label(&test, "FaceTime HD Camera"),
+            "full camera name must not appear"
+        );
+
+        let shutter = shutter_box(&test);
+        let shutter_cx = shutter.0 + shutter.2 / 2.0;
+        assert!(
+            (shutter_cx - W / 2.0).abs() < 2.0,
+            "shutter center x={shutter_cx} must sit on {mid}",
+            mid = W / 2.0
+        );
+
+        let left = label_box(&test, "<").expect("left chevron");
+        let right = label_box(&test, ">").expect("right chevron");
+        assert!(
+            left.0 >= -1.0,
+            "left chevron walks off the left: {left:?}"
+        );
+        assert!(
+            right.0 + right.2 <= W + 1.0,
+            "right chevron walks off the glass: {right:?} window_w={W}"
+        );
+        assert!(
+            right.0 >= W - theme::CHEVRON_W - 1.0,
+            "right chevron must sit in the last {w}px, was x={}",
+            right.0,
+            w = theme::CHEVRON_W
+        );
+
+        let mut overflowed = Vec::new();
+        for (text, x0, y0, x1, y1) in all_label_boxes(&test) {
+            if x0 < -1.0 || x1 > W + 1.0 || y0 < -1.0 || y1 > H + 1.0 {
+                overflowed.push(format!("{text:?} ({x0:.1},{y0:.1})-({x1:.1},{y1:.1})"));
+            }
+        }
+        assert!(
+            overflowed.is_empty(),
+            "copy walked off the {W}×{H} glass:\n{}",
+            overflowed.join("\n")
+        );
+
+        let out = std::env::temp_dir().join("mirror2-layout-stone.png");
+        test.render_to_file(&out);
+        assert!(out.exists(), "wrote {out:?}");
     }
 }

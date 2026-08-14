@@ -2,15 +2,20 @@
 
 mod atmo;
 mod bg;
+mod beta;
 mod cctv;
 mod composite;
+mod d8;
 mod gx;
+mod live;
 mod morph;
 mod ops;
 mod osd;
 mod params;
 mod ripple;
+mod sat;
 mod state;
+mod uhf;
 mod vhs;
 
 pub use bg::{
@@ -37,16 +42,26 @@ pub enum Look {
     Morph,
     Vhs,
     Gx,
+    Uhf,
+    Beta,
+    D8,
+    Live,
+    Sat,
     Cctv,
     Ripple,
 }
 
 impl Look {
-    pub const RAIL: [Self; 6] = [
+    pub const RAIL: [Self; 11] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
         Self::Gx,
+        Self::Uhf,
+        Self::Beta,
+        Self::D8,
+        Self::Live,
+        Self::Sat,
         Self::Cctv,
         Self::Ripple,
     ];
@@ -57,8 +72,13 @@ impl Look {
             Self::Morph => 1,
             Self::Vhs => 2,
             Self::Gx => 3,
-            Self::Cctv => 4,
-            Self::Ripple => 5,
+            Self::Uhf => 4,
+            Self::Beta => 5,
+            Self::D8 => 6,
+            Self::Live => 7,
+            Self::Sat => 8,
+            Self::Cctv => 9,
+            Self::Ripple => 10,
         }
     }
 
@@ -67,8 +87,13 @@ impl Look {
             1 => Self::Morph,
             2 => Self::Vhs,
             3 => Self::Gx,
-            4 => Self::Cctv,
-            5 => Self::Ripple,
+            4 => Self::Uhf,
+            5 => Self::Beta,
+            6 => Self::D8,
+            7 => Self::Live,
+            8 => Self::Sat,
+            9 => Self::Cctv,
+            10 => Self::Ripple,
             _ => Self::None,
         }
     }
@@ -79,6 +104,11 @@ impl Look {
             Self::Morph => "MORPH",
             Self::Vhs => "VHS",
             Self::Gx => "GX",
+            Self::Uhf => "UHF",
+            Self::Beta => "BETA",
+            Self::D8 => "D8",
+            Self::Live => "LIVE",
+            Self::Sat => "SAT",
             Self::Cctv => "CCTV",
             Self::Ripple => "RIPPLE",
         }
@@ -90,6 +120,11 @@ impl Look {
             Self::Morph => "ink drawing · wet mixes back to photo",
             Self::Vhs => "tracking · chroma bleed · tape wear",
             Self::Gx => "Hi8 warmth · comb · MAR 14 1994",
+            Self::Uhf => "snow · vertical roll · dying UHF",
+            Self::Beta => "luma dropout · sharper than VHS",
+            Self::D8 => "8×8 blocks · MiniDV date burn-in",
+            Self::Live => "tally · interlace · broadcast crush",
+            Self::Sat => "rain fade · macro · 16:9 letterbox",
             Self::Cctv => "blocky green-grey · crushed",
             Self::Ripple => "water rings · VHS cam through a puddle",
         }
@@ -102,6 +137,11 @@ impl Look {
             Self::Morph => "ink drawing",
             Self::Vhs => "tracking · wear",
             Self::Gx => "Hi8 · 1994",
+            Self::Uhf => "antenna · snow",
+            Self::Beta => "luma · dropout",
+            Self::D8 => "block · digital",
+            Self::Live => "tally · interlace",
+            Self::Sat => "rain · macro",
             Self::Cctv => "blocky · crushed",
             Self::Ripple => "water rings",
         }
@@ -154,6 +194,11 @@ fn apply_look(
         Look::Morph => morph::apply(rgb, w, h, params),
         Look::Vhs => vhs::apply(rgb, w, h, state, params),
         Look::Gx => gx::apply(rgb, w, h, state, params),
+        Look::Uhf => uhf::apply(rgb, w, h, state, params),
+        Look::Beta => beta::apply(rgb, w, h, state, params),
+        Look::D8 => d8::apply(rgb, w, h, state, params),
+        Look::Live => live::apply(rgb, w, h, state, params),
+        Look::Sat => sat::apply(rgb, w, h, state, params),
         Look::Cctv => cctv::apply(rgb, w, h, state, params),
         Look::Ripple => ripple::apply(rgb, w, h, state, params),
     }
@@ -286,14 +331,7 @@ mod tests {
     fn every_look_preserves_size() {
         set_atmo(AtmosphereParams::default());
         let rgb = sample_rgb(32, 24);
-        for look in [
-            Look::None,
-            Look::Morph,
-            Look::Vhs,
-            Look::Gx,
-            Look::Cctv,
-            Look::Ripple,
-        ] {
+        for look in Look::RAIL {
             set_params(LookParams::defaults(look));
             let out = apply(look, &rgb, 32, 24);
             assert_eq!(out.len(), 32 * 24 * 4, "{look:?}");
@@ -357,6 +395,23 @@ mod tests {
     }
 
     #[test]
+    fn sat_letterbox_bars_are_dark() {
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Sat));
+        let rgb = vec![200u8; 640 * 480 * 3];
+        let out = apply(Look::Sat, &rgb, 640, 480);
+        let (bar, active) = ops::letterbox_bars_16x9(480);
+        let ww = 640usize;
+        let top = out[0];
+        let mid = out[((bar + active / 2) * ww + 320) * 4];
+        assert!(top < 30, "top bar should be near black, got {top}");
+        assert!(mid > 100, "picture area should stay bright, got {mid}");
+    }
+
+    #[test]
     fn none_look_is_clean_passthrough() {
         set_atmo(AtmosphereParams::default());
         set_params(LookParams::defaults(Look::None));
@@ -372,6 +427,7 @@ mod tests {
         assert!(!BackgroundParams::default().enabled);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
+        assert_eq!(Look::RAIL.len(), 11);
     }
 
     #[test]
@@ -423,6 +479,11 @@ mod tests {
     #[test]
     fn gx_stamp_is_frozen_1994() {
         assert_eq!(osd::GX_DATE, "MAR 14 1994");
+    }
+
+    #[test]
+    fn d8_stamp_is_frozen_2000() {
+        assert_eq!(osd::D8_DATE, "JAN 01 2000");
     }
 
     #[test]

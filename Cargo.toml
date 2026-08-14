@@ -1,8 +1,8 @@
 [package]
-name = "likeness"
+name = "mirror2"
 version = "0.1.0"
 edition = "2021"
-description = "Likeness by NT — outsider spiritual successor to Photo Booth. No curtains."
+description = "Mirror2 by NT — outsider spiritual successor to Photo Booth. No curtains."
 authors = ["Jon McMillion / New Tower"]
 license = "UNLICENSED"
 

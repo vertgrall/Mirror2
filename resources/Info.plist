@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>Likeness</string>
+	<string>Mirror2</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.newtower.likeness</string>
+	<string>com.newtower.mirror2</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Likeness</string>
+	<string>Mirror2</string>
 	<key>CFBundleDisplayName</key>
-	<string>Likeness</string>
+	<string>Mirror2</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,6 +27,6 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Likeness looks through the camera to make a likeness of you.</string>
+	<string>Mirror2 looks through the camera so you can pick a look and keep a still.</string>
 </dict>
 </plist>

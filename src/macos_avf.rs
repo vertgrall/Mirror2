@@ -132,7 +132,7 @@ unsafe fn open_session() -> Result<MacCamera, String> {
     }
 
     let name = nsstring_to_string(msg_send![device, localizedName]);
-    eprintln!("likeness: AVFoundation camera {name:?} → 32BGRA");
+    eprintln!("mirror2: AVFoundation camera {name:?} → 32BGRA");
 
     let mut err: id = nil;
     let input: id = msg_send![
@@ -148,7 +148,7 @@ unsafe fn open_session() -> Result<MacCamera, String> {
     let tx = Arc::new(tx);
 
     let delegate = make_delegate(&tx)?;
-    let queue = dispatch_queue_create(c"com.newtower.likeness.frames".as_ptr(), std::ptr::null());
+    let queue = dispatch_queue_create(c"com.newtower.mirror2.frames".as_ptr(), std::ptr::null());
     if queue.is_null() {
         return Err("could not create camera queue".into());
     }
@@ -206,8 +206,8 @@ unsafe fn set_bgra_settings(output: id) -> Result<(), String> {
 fn delegate_class() -> &'static Class {
     static CLASS: std::sync::OnceLock<&'static Class> = std::sync::OnceLock::new();
     CLASS.get_or_init(|| {
-        let mut decl = ClassDecl::new("LikenessCaptureCallback", class!(NSObject))
-            .expect("register LikenessCaptureCallback");
+        let mut decl = ClassDecl::new("Mirror2CaptureCallback", class!(NSObject))
+            .expect("register Mirror2CaptureCallback");
         decl.add_ivar::<*const c_void>("_tx");
         unsafe {
             decl.add_method(
