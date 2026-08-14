@@ -970,6 +970,7 @@ fn footer(palette: Palette, err: Option<String>) -> Element {
 mod slider_ui_tests {
     use super::*;
     use freya_testing::prelude::*;
+    use std::path::Path;
 
     fn slider_harness() -> impl IntoElement {
         let mut params = use_state(|| LookParams::defaults(Look::Morph));
@@ -1436,5 +1437,41 @@ mod slider_ui_tests {
         let out = std::env::temp_dir().join("mirror2-layout-stone.png");
         test.render_to_file(&out);
         assert!(out.exists(), "wrote {out:?}");
+    }
+
+    fn seed_preview(look: Look) {
+        let w = 960u32;
+        let h = 720u32;
+        let rgb = effects::standin_rgb(w, h, 0.0);
+        let (pw, ph, small) = effects::downscale_rgb(&rgb, w, h, theme::PREVIEW_MAX_W);
+        let mirrored = effects::mirror_rgb(&small, pw, ph);
+        camera::set_look(look);
+        let rgba = effects::apply(look, &mirrored, pw, ph);
+        camera::set_preview_for_test(pw, ph, rgba);
+    }
+
+    #[test]
+    fn export_readme_screenshots() {
+        let shots = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/screenshots");
+        std::fs::create_dir_all(&shots).expect("docs/screenshots");
+
+        camera::set_status_for_test(CameraStatus::Live {
+            name: "FaceTime HD Camera".into(),
+        });
+
+        seed_preview(Look::None);
+        let mut off = TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
+        off.sync_and_update();
+        let off_path = shots.join("mirror2-off.png");
+        off.render_to_file(&off_path);
+        assert!(off_path.exists());
+
+        seed_preview(Look::Vhs);
+        let mut vhs = TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
+        vhs.sync_and_update();
+        click_label(&mut vhs, "tracking · wear");
+        let vhs_path = shots.join("mirror2-vhs.png");
+        vhs.render_to_file(&vhs_path);
+        assert!(vhs_path.exists());
     }
 }

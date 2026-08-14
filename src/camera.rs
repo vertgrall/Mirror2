@@ -108,6 +108,11 @@ pub fn set_status_for_test(next: CameraStatus) {
     set_status(next);
 }
 
+#[cfg(test)]
+pub fn set_preview_for_test(width: u32, height: u32, rgba: Vec<u8>) {
+    publish(width, height, rgba);
+}
+
 pub fn start() {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return;

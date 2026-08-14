@@ -6,6 +6,14 @@ No curtains. No booth. No fake materials.
 
 You sit. You pick a look. The camera well is always the preview. You keep a still.
 
+## Screenshots
+
+| Clean camera | VHS · tracking · wear |
+|:---:|:---:|
+| ![Mirror2 — OFF / clean camera](docs/screenshots/mirror2-off.png) | ![Mirror2 — VHS look with wet sliders](docs/screenshots/mirror2-vhs.png) |
+
+Dock cards are photoreal still-life specimens. Chevrons page through 11 looks.
+
 ```
  MIRROR2                           NEW TOWER
  ┌─────────────────────────────────────────┐
@@ -54,3 +62,9 @@ Rust + [Freya](https://freyaui.dev) + AVFoundation (32BGRA). New Tower.
 ## Layout
 
 Fixed **480×728** window. Shutter centered on the spine. Layout regression tests in `main.rs` (`layout_stone_nothing_walks_off_the_glass`).
+
+Regenerate README screenshots:
+
+```bash
+cargo test export_readme_screenshots
+```
