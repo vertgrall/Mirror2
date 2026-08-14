@@ -1501,7 +1501,7 @@ mod slider_ui_tests {
         std::fs::create_dir_all(&shots).expect("docs/screenshots");
 
         render_look_shot(&shots, Look::None, "mirror2-off.png");
-        render_look_shot(&shots, Look::Vhs, "mirror2-vhs.png");
+        // mirror2-vhs.png is a live camera capture — keep it out of the test harness.
         render_look_shot(&shots, Look::D8, "mirror2-d8.png");
         render_look_shot(&shots, Look::Sat, "mirror2-sat.png");
         render_look_shot(&shots, Look::Cctv, "mirror2-cctv.png");
