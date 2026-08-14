@@ -89,7 +89,6 @@ pub fn gradient(g: &[f32], w: u32, h: u32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     (gx, gy, mag)
 }
 
-
 #[allow(dead_code)]
 pub fn dilate_n(mask: &[u8], w: u32, h: u32, passes: u32) -> Vec<u8> {
     if passes == 0 {
@@ -135,6 +134,11 @@ pub fn erode3(mask: &[u8], w: u32, h: u32) -> Vec<u8> {
         }
     }
     out
+}
+
+/// 3×3 morphological open — erode then dilate; thins edge strokes.
+pub fn open3(mask: &[u8], w: u32, h: u32) -> Vec<u8> {
+    dilate3(&erode3(mask, w, h), w, h)
 }
 
 /// 3×3 binary dilation

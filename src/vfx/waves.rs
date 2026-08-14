@@ -45,7 +45,7 @@ pub fn apply(rgb: &[u8], w: u32, h: u32, state: &VfxState, p: &LookParams) -> Ve
             let sx = (xf + dx).clamp(0.0, xmax);
             let sy = (yf + dy).clamp(0.0, ymax);
 
-            let (mut r, mut g, mut b) = sample_rgb(rgb, w, h, sx, sy);
+            let (r, g, b) = sample_rgb(rgb, w, h, sx, sy);
             let mut rf = r as f32;
             let mut gf = g as f32;
             let mut bf = b as f32;

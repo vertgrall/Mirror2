@@ -2264,6 +2264,7 @@ version = "0.1.0"
 dependencies = [
  "async-io",
  "block",
+ "bytes",
  "chrono",
  "cocoa-foundation 0.2.1",
  "core-foundation 0.10.1",

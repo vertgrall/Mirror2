@@ -1,10 +1,16 @@
 //! Mirror2 — outsider spiritual successor to Photo Booth.
 //! No curtains. No booth. No fake materials. You, kept.
 
+mod about;
+mod about_art;
+mod about_assets;
+mod about_launch;
 mod backgrounds;
 mod camera;
 mod effects;
 mod keep;
+#[cfg(target_os = "macos")]
+mod macos_about_menu;
 #[cfg(target_os = "macos")]
 mod macos_avf;
 #[cfg(target_os = "macos")]
@@ -23,10 +29,10 @@ use freya::prelude::*;
 use camera::CameraStatus;
 use effects::{
     atmo_param_defs, bg_param_defs, bg_params_from_values, cycle_background, current_path,
-    set_atmosphere, set_background, set_params, AtmosphereParams, BackgroundParams, Look,
-    LookParams, ParamDef,
+    set_atmosphere, set_background, set_params, wear_plate,
+    AtmosphereParams, BackgroundParams, Look, LookParams, ParamDef,
 };
-use backgrounds::label as bg_label;
+use backgrounds::{builtin_path, label as bg_label, PRESETS};
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
@@ -34,15 +40,51 @@ use theme::{Palette, Theme};
 
 const ICON: &[u8] = include_bytes!("../resources/icon-window.png");
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FxTab {
+    Look,
+    Bg,
+}
+
+pub fn is_debug() -> bool {
+    static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DEBUG.get_or_init(|| {
+        std::env::var("MIRROR2_DEBUG").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+            || std::env::var("RUST_LOG").map(|v| v.contains("debug") || v.contains("trace")).unwrap_or(false)
+    })
+}
+
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        if $crate::is_debug() {
+            eprintln!("[DEBUG] [mirror2] {}", format_args!($($arg)*));
+        }
+    };
+}
+
 fn main() {
+    debug_log!("starting Mirror2 v{}", env!("CARGO_PKG_VERSION"));
+    about_assets::preload();
     launch(
         LaunchConfig::new()
-            .with_future(|_proxy| async move {
+            .with_future(|proxy| async move {
+                let proxy = proxy.clone();
+                about_launch::set_renderer_dispatch(Box::new(move |f| {
+                    let _ = proxy.clone().post_callback(move |ctx| f(ctx));
+                }));
                 // AVFoundation needs the app run loop up before it will deliver frames.
                 Timer::after(Duration::from_millis(200)).await;
                 #[cfg(target_os = "macos")]
+                macos_about_menu::install();
+                #[cfg(target_os = "macos")]
                 macos_icon::set_dock_icon(ICON);
                 camera::start();
+                #[cfg(target_os = "macos")]
+                {
+                    Timer::after(Duration::from_millis(750)).await;
+                    macos_about_menu::install();
+                }
             })
             .with_window(
                 WindowConfig::new(app)
@@ -73,7 +115,7 @@ fn app() -> Element {
         let d = BackgroundParams::default();
         [d.key_hue, d.key_width, d.feather, d.spill]
     });
-    let atmo_values = use_state(|| {
+    let _atmo_values = use_state(|| {
         let d = AtmosphereParams::default();
         [d.smoke, d.density, d.drift, d.scale]
     });
@@ -84,6 +126,7 @@ fn app() -> Element {
     let next_id = use_state(|| 1u64);
     let frame_seq = use_state(|| 0u64);
     let controls_rev = use_state(|| 0u32);
+    let mut fx_tab = use_state(|| FxTab::Look);
 
     backgrounds::ensure_dir();
 
@@ -209,6 +252,12 @@ fn app() -> Element {
             if shutter::is_space(&e.key, e.code) {
                 e.stop_propagation();
                 start_countdown(shutter);
+                return;
+            }
+            if matches!(&e.key, Key::Character(c) if c == "b" || c == "B") {
+                e.stop_propagation();
+                fx_tab.set(FxTab::Bg);
+                request_redraw();
             }
         })
         .child(
@@ -218,14 +267,17 @@ fn app() -> Element {
                 .height(Size::fill())
                 .spacing(theme::GAP)
                 .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-                .child(header(palette, &status, ui_theme))
+                .child(header(palette, &status, ui_theme, fx_tab))
                 .child(stage_well(palette, current_look, seq))
                 .child(shutter_button(palette, shutter, shutter_now, countdown))
-                .child(look_fx_panel(
+                .child(fx_band_panel(
                     palette,
+                    fx_tab,
                     current_look,
                     current_params,
                     params,
+                    bg_enabled,
+                    bg_values,
                     controls_rev,
                     page,
                     err,
@@ -298,8 +350,14 @@ fn px_spacer(w: f32) -> Element {
     rect().width(Size::px(w)).height(Size::px(1.)).into()
 }
 
-fn header(palette: Palette, status: &CameraStatus, mut ui_theme: State<Theme>) -> Element {
+fn header(
+    palette: Palette,
+    status: &CameraStatus,
+    mut ui_theme: State<Theme>,
+    mut fx_tab: State<FxTab>,
+) -> Element {
     let theme_label = ui_theme().label();
+    let on_bg = fx_tab() == FxTab::Bg;
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
@@ -312,11 +370,45 @@ fn header(palette: Palette, status: &CameraStatus, mut ui_theme: State<Theme>) -
                 .cross_align(Alignment::Center)
                 .child(gutter())
                 .child(
-                    label()
-                        .text("MIRROR2")
-                        .font_size(theme::FONT_SMALL)
-                        .font_weight(FontWeight::BOLD)
-                        .color(palette.text),
+                    rect()
+                        .on_mouse_up(|_| about_launch::request_about_window())
+                        .child(
+                            label()
+                                .text("MIRROR2")
+                                .font_size(theme::FONT_SMALL)
+                                .font_weight(FontWeight::BOLD)
+                                .color(palette.text),
+                        ),
+                )
+                .child(gutter())
+                .child(
+                    rect()
+                        .padding(Gaps::new(1., 5., 1., 5.))
+                        .background(if on_bg {
+                            palette.fill_hi
+                        } else {
+                            palette.fill
+                        })
+                        .border(theme::border_all(if on_bg {
+                            palette.accent
+                        } else {
+                            palette.stroke_soft
+                        }))
+                        .on_mouse_up(move |_| {
+                            fx_tab.set(FxTab::Bg);
+                            request_redraw();
+                        })
+                        .child(
+                            label()
+                                .text("BG")
+                                .font_size(9.)
+                                .font_weight(FontWeight::BOLD)
+                                .color(if on_bg {
+                                    palette.accent
+                                } else {
+                                    palette.text_dim
+                                }),
+                        ),
                 )
                 .child(gutter())
                 .child(
@@ -352,58 +444,159 @@ fn header(palette: Palette, status: &CameraStatus, mut ui_theme: State<Theme>) -
         .into()
 }
 
-fn look_fx_panel(
+fn fx_band_panel(
+    palette: Palette,
+    fx_tab: State<FxTab>,
+    look: Look,
+    values: LookParams,
+    params: State<LookParams>,
+    bg_enabled: State<bool>,
+    bg_values: State<[f32; 4]>,
+    controls_rev: State<u32>,
+    page: usize,
+    err: Option<String>,
+) -> Element {
+    let tab = fx_tab();
+    let mut col = rect()
+        .vertical()
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(theme::FX_BAND_H))
+        .spacing(3.)
+        .padding(Gaps::new(theme::GAP, 0., 0., 0.))
+        .child(fx_tab_bar(palette, fx_tab, look, tab, page));
+
+    col = match tab {
+        FxTab::Look => col.child(look_fx_body(
+            palette,
+            look,
+            values,
+            params,
+            controls_rev,
+            page,
+        )),
+        FxTab::Bg => col.child(background_controls(
+            palette,
+            bg_enabled,
+            bg_values,
+            controls_rev,
+        )),
+    };
+
+    col.child(footer(palette, err)).into()
+}
+
+fn fx_tab_bar(
+    palette: Palette,
+    fx_tab: State<FxTab>,
+    look: Look,
+    tab: FxTab,
+    page: usize,
+) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::px(theme::WINDOW_W))
+        .main_align(Alignment::SpaceBetween)
+        .cross_align(Alignment::Center)
+        .child(
+            rect()
+                .horizontal()
+                .spacing(4.)
+                .cross_align(Alignment::Center)
+                .child(gutter())
+                .child(fx_tab_chip(palette, "LOOK", tab == FxTab::Look, {
+                    let mut t = fx_tab;
+                    move |_| {
+                        t.set(FxTab::Look);
+                        request_redraw();
+                    }
+                }))
+                .child(fx_tab_chip(palette, "BG", tab == FxTab::Bg, {
+                    let mut t = fx_tab;
+                    move |_| {
+                        t.set(FxTab::Bg);
+                        request_redraw();
+                    }
+                }))
+                .child(gutter())
+                .child(
+                    label()
+                        .text(if tab == FxTab::Bg {
+                            format!(
+                                "plate · {}",
+                                current_path()
+                                    .map(|p| bg_label(&p))
+                                    .unwrap_or_else(|| "VOID".into())
+                            )
+                        } else {
+                            format!("{}  ·  {}", look.label(), look.tile_line())
+                        })
+                        .font_size(theme::FONT_SMALL)
+                        .font_weight(FontWeight::BOLD)
+                        .color(palette.text),
+                ),
+        )
+        .child(
+            label()
+                .text(if tab == FxTab::Look {
+                    let start = dock_start(page);
+                    let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
+                    format!("{}–{} of {}", start + 1, end, Look::RAIL.len())
+                } else {
+                    "presets + folder".into()
+                })
+                .font_size(theme::FONT_SMALL)
+                .color(palette.muted),
+        )
+        .into()
+}
+
+fn fx_tab_chip(
+    palette: Palette,
+    text: &'static str,
+    selected: bool,
+    on_press: impl FnMut(Event<MouseEventData>) + 'static,
+) -> Element {
+    rect()
+        .padding(Gaps::new(3., 8., 3., 8.))
+        .background(if selected {
+            palette.fill_hi
+        } else {
+            palette.fill
+        })
+        .border(theme::border_all(if selected {
+            palette.accent
+        } else {
+            palette.stroke_soft
+        }))
+        .on_mouse_up(on_press)
+        .child(
+            label()
+                .text(text)
+                .font_size(10.)
+                .font_weight(FontWeight::BOLD)
+                .color(if selected {
+                    palette.accent
+                } else {
+                    palette.text
+                }),
+        )
+        .into()
+}
+
+fn look_fx_body(
     palette: Palette,
     look: Look,
     values: LookParams,
     params: State<LookParams>,
     controls_rev: State<u32>,
     page: usize,
-    err: Option<String>,
 ) -> Element {
     let start = dock_start(page);
     let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
-    let count = format!("{}–{} of {}", start + 1, end, Look::RAIL.len());
+    let _count = format!("{}–{} of {}", start + 1, end, Look::RAIL.len());
     let defs = look.param_defs();
 
-    let mut col = rect()
-        .vertical()
-        .width(Size::px(theme::WINDOW_W))
-        .height(Size::px(theme::FX_BAND_H))
-        .spacing(4.)
-        .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::px(theme::WINDOW_W))
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .child(gutter())
-                        .child(
-                            label()
-                                .text(format!("{}  ·  {}", look.label(), look.tile_line()))
-                                .font_size(theme::FONT_SMALL)
-                                .font_weight(FontWeight::BOLD)
-                                .color(palette.text),
-                        ),
-                )
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .child(
-                            label()
-                                .text(count)
-                                .font_size(theme::FONT_SMALL)
-                                .color(palette.muted),
-                        )
-                        .child(gutter()),
-                ),
-        );
+    let mut col = rect().vertical().width(Size::fill()).spacing(3.);
 
     for (index, def) in defs.iter().enumerate() {
         col = col.child(kit_slider(palette, *def, values.values[index], {
@@ -412,7 +605,7 @@ fn look_fx_panel(
             move |pct| write_param_pct(&mut param_state, index, *def, pct, &mut rev)
         }));
     }
-    col.child(footer(palette, err)).into()
+    col.into()
 }
 
 fn look_dock(
@@ -612,59 +805,63 @@ fn background_controls(
 ) -> Element {
     let enabled = bg_enabled();
     let values = bg_values();
-    let plate_name = current_path()
-        .map(|p| bg_label(&p))
-        .unwrap_or_else(|| "VOID".into());
 
-    let mut panel = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(6.)
-        .child(
-            label()
-                .text("green screen + plate")
-                .font_size(10.)
-                .color(palette.muted),
+    let mut panel = rect().vertical().width(Size::fill()).spacing(3.);
+
+    let mut presets = rect()
+        .horizontal()
+        .spacing(3.)
+        .cross_align(Alignment::Center);
+    presets = presets.child({
+        let mut en = bg_enabled;
+        let vals = bg_values;
+        let mut rev = controls_rev;
+        bg_action_chip(
+            palette,
+            if enabled { "BG ON" } else { "BG OFF" },
+            enabled,
+            move |_| {
+                let next = !*en.peek();
+                *en.write() = next;
+                sync_background(next, *vals.peek());
+                touch_controls(&mut rev);
+            },
         )
-        .child({
-            let mut en = bg_enabled;
+    });
+    for &(id, label) in PRESETS {
+        presets = presets.child({
+            let rev = controls_rev;
             let vals = bg_values;
-            let mut rev = controls_rev;
-            rect()
-                .horizontal()
-                .spacing(4.)
-                .cross_align(Alignment::Center)
-                .child(bg_action_chip(
-                    palette,
-                    if enabled { "BG ON" } else { "BG OFF" },
-                    enabled,
-                    move |_| {
-                        let next = !*en.peek();
-                        *en.write() = next;
-                        sync_background(next, *vals.peek());
-                        touch_controls(&mut rev);
-                    },
-                ))
-                .child({
-                    let mut rev = controls_rev;
-                    let vals = bg_values;
-                    let en = bg_enabled;
-                    bg_action_chip(palette, "NEXT", false, move |_| {
-                        cycle_background();
-                        sync_background(*en.peek(), *vals.peek());
-                        touch_controls(&mut rev);
-                    })
-                })
-                .child(bg_action_chip(palette, "FOLDER", false, |_| {
-                    backgrounds::reveal_folder();
-                }))
-                .child(
-                    label()
-                        .text(plate_name)
-                        .font_size(9.)
-                        .color(palette.text),
-                )
+            let en = bg_enabled;
+            bg_action_chip(palette, label, false, move |_| {
+                apply_bg_plate(builtin_path(id), en, vals, rev);
+            })
         });
+    }
+    presets = presets.child({
+        let mut en = bg_enabled;
+        let vals = bg_values;
+        let mut rev = controls_rev;
+        bg_action_chip(palette, "NEXT", false, move |_| {
+            cycle_background();
+            if !*en.peek() {
+                *en.write() = true;
+            }
+            sync_background(true, *vals.peek());
+            touch_controls(&mut rev);
+        })
+    });
+    presets = presets.child(bg_action_chip(palette, "FOLDER", false, |_| {
+        backgrounds::reveal_folder();
+    }));
+    panel = panel.child(presets);
+
+    panel = panel.child(
+        label()
+            .text("drop PNG/JPEG in folder · NEXT cycles plates")
+            .font_size(9.)
+            .color(palette.muted),
+    );
 
     for (index, def) in bg_param_defs().iter().enumerate() {
         panel = panel.child(kit_slider(palette, *def, values[index], {
@@ -723,7 +920,7 @@ fn kit_slider(
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
-        .height(Size::px(28.))
+        .height(Size::px(24.))
         .cross_align(Alignment::Center)
         .spacing(theme::GAP)
         .child(gutter())
@@ -785,6 +982,20 @@ fn bg_action_chip(
 
 fn sync_background(enabled: bool, values: [f32; 4]) {
     set_background(bg_params_from_values(values, enabled));
+}
+
+fn apply_bg_plate(
+    path: std::path::PathBuf,
+    mut bg_enabled: State<bool>,
+    bg_values: State<[f32; 4]>,
+    mut controls_rev: State<u32>,
+) {
+    wear_plate(path);
+    if !*bg_enabled.peek() {
+        *bg_enabled.write() = true;
+    }
+    sync_background(true, *bg_values.peek());
+    touch_controls(&mut controls_rev);
 }
 
 fn sync_atmosphere(values: [f32; 4]) {
@@ -1096,7 +1307,7 @@ mod slider_ui_tests {
     fn slider_changes_wet_value() {
         let mut test = launch_test(slider_harness);
         test.sync_and_update();
-        assert!(has_label(&test, "1.0"), "Morph wet default is 1.0");
+        assert!(has_label(&test, "0.9") || has_label(&test, "0.85"), "Morph lines default is 0.85");
 
         let slider = test
             .find(|node, element| {
@@ -1258,7 +1469,7 @@ mod slider_ui_tests {
         assert!(has_label(&test, "OFF"));
         assert!(has_label(&test, "clean camera"));
         assert!(has_label(&test, "MORPH"));
-        assert!(has_label(&test, "ink drawing"));
+        assert!(has_label(&test, "dark lines · color"));
         assert!(has_label(&test, "VHS"));
         assert!(has_label(&test, "tracking · wear"));
         assert!(!has_label(&test, "GX"));
@@ -1266,7 +1477,27 @@ mod slider_ui_tests {
     }
 
     #[test]
+    fn click_bg_tab_shows_presets() {
+        effects::set_background(effects::BackgroundParams::default());
+        let mut test = TestingRunner::new(
+            app,
+            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
+            |_| {},
+            1.0,
+        )
+        .0;
+        test.sync_and_update();
+        click_label(&mut test, "BG");
+        test.sync_and_update();
+        assert!(has_label(&test, "BG ON") || has_label(&test, "BG OFF"));
+        assert!(has_label(&test, "SKY"));
+        assert!(has_label(&test, "FOLDER"));
+        assert!(has_label(&test, "NEXT"));
+    }
+
+    #[test]
     fn click_vhs_wears_on_camera() {
+        effects::set_background(effects::BackgroundParams::default());
         camera::set_look(Look::None);
         let mut test = TestingRunner::new(
             app,

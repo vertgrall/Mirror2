@@ -8,6 +8,7 @@ license = "UNLICENSED"
 
 [dependencies]
 async-io = "2"
+bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dispatch = "0.2"
 freya = { version = "0.4", features = ["engine"] }

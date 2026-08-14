@@ -46,7 +46,9 @@ fn full_lock() -> &'static Mutex<Option<(u32, u32, Vec<u8>)>> {
 }
 
 pub fn set_look(look: Look) {
+    crate::debug_log!("camera: look set to {:?}", look);
     LOOK.store(look.id(), Ordering::Relaxed);
+    effects::reset_temporal();
 }
 
 pub fn current_look() -> Look {

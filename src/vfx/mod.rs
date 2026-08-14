@@ -24,11 +24,12 @@ mod vhs;
 
 pub use bg::{
     cycle_background, current_path, param_defs as bg_param_defs, params_from_values,
-    set_params as set_background, BackgroundParams,
+    select_path, select_preset, set_params as set_background, wear_plate, BackgroundParams,
 };
 pub use atmo::{
     param_defs as atmo_param_defs, set_params as set_atmosphere, AtmosphereParams,
 };
+pub use ops::rgb_to_rgba;
 pub use params::{current_params, set_params, LookParams, ParamDef};
 pub use state::VfxState;
 
@@ -38,6 +39,13 @@ static STATE: OnceLock<Mutex<VfxState>> = OnceLock::new();
 
 fn vfx_state() -> &'static Mutex<VfxState> {
     STATE.get_or_init(|| Mutex::new(VfxState::default()))
+}
+
+/// Drop frame history when the user picks a different look.
+pub fn reset_temporal() {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.clear_temporal();
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,7 +149,7 @@ impl Look {
     pub fn hint(self) -> &'static str {
         match self {
             Self::None => "clean camera · pick a look",
-            Self::Morph => "ink drawing · wet mixes back to photo",
+            Self::Morph => "dark ink lines · color stays · lines + trail",
             Self::Vhs => "tracking · chroma bleed · tape wear",
             Self::Gx => "Hi8 warmth · comb · MAR 14 1994",
             Self::Uhf => "snow · vertical roll · dying UHF",
@@ -162,7 +170,7 @@ impl Look {
     pub fn tile_line(self) -> &'static str {
         match self {
             Self::None => "clean camera",
-            Self::Morph => "ink drawing",
+            Self::Morph => "dark lines · color",
             Self::Vhs => "tracking · wear",
             Self::Gx => "Hi8 · 1994",
             Self::Uhf => "antenna · snow",
@@ -197,16 +205,20 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     let Ok(mut state) = vfx_state().lock() else {
         return ops::rgb_to_rgba(rgb, w, h);
     };
-    state.advance(w, h);
+    state.advance(w, h, look.id());
 
     let composited = composite::apply(rgb, w, h, plate.as_deref(), &bg_params);
     let wet = look_params.wet();
-    let rgba = if look.is_none() || wet < 0.01 {
+    let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
         ops::rgb_to_rgba(&composited, w, h)
     } else {
         let mut looked = apply_look(look, &composited, w, h, &state, &look_params);
-        if wet < 0.99 {
+        // Morph keeps the photo visible — lines slider lives inside the look.
+        if wet < 0.99 && !matches!(look, Look::Morph) {
             ops::mix_look_over_rgb(&mut looked, &composited, wet);
+        }
+        if matches!(look, Look::Morph) {
+            state.commit_morph(&looked);
         }
         looked
     };
@@ -224,7 +236,7 @@ fn apply_look(
 ) -> Vec<u8> {
     match look {
         Look::None => ops::rgb_to_rgba(rgb, w, h),
-        Look::Morph => morph::apply(rgb, w, h, params),
+        Look::Morph => morph::apply(rgb, w, h, state, params),
         Look::Vhs => vhs::apply(rgb, w, h, state, params),
         Look::Gx => gx::apply(rgb, w, h, state, params),
         Look::Uhf => uhf::apply(rgb, w, h, state, params),
@@ -351,7 +363,10 @@ fn dist(x: f32, y: f32, ox: f32, oy: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use atmo::set_params as set_atmo;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn sample_rgb(w: u32, h: u32) -> Vec<u8> {
         let mut v = vec![0u8; (w * h * 3) as usize];
@@ -366,6 +381,7 @@ mod tests {
 
     #[test]
     fn every_look_preserves_size() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_atmo(AtmosphereParams::default());
         let rgb = sample_rgb(32, 24);
         for look in Look::RAIL {
@@ -378,6 +394,8 @@ mod tests {
 
     #[test]
     fn morph_produces_edges() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
         let mut rgb = vec![255u8; 32 * 24 * 3];
         for y in 8..16 {
             for x in 8..24 {
@@ -395,7 +413,40 @@ mod tests {
     }
 
     #[test]
+    fn morph_trail_uses_previous_frame() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Morph));
+        let mut a = vec![255u8; 32 * 24 * 3];
+        let mut b = vec![255u8; 32 * 24 * 3];
+        for y in 6..18 {
+            for x in 4..20 {
+                let i = (y * 32 + x) * 3;
+                a[i] = 30;
+                a[i + 1] = 30;
+                a[i + 2] = 30;
+            }
+        }
+        for y in 6..18 {
+            for x in 10..26 {
+                let i = (y * 32 + x) * 3;
+                b[i] = 30;
+                b[i + 1] = 30;
+                b[i + 2] = 30;
+            }
+        }
+        let first = apply(Look::Morph, &a, 32, 24);
+        let second = apply(Look::Morph, &b, 32, 24);
+        assert_ne!(first, second, "motion should stretch morph ink across frames");
+    }
+
+    #[test]
     fn vhs_chroma_survives_edge_jitter() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_params(LookParams::defaults(Look::Vhs));
         set_atmo(AtmosphereParams { smoke: 0.0, ..Default::default() });
         // Realistic preview size + default tracking/chroma — previously OOB on jittered sx.
@@ -405,7 +456,10 @@ mod tests {
     }
 
     #[test]
-    fn wet_zero_is_dry_camera() {
+    fn morph_lines_zero_is_clean_photo() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -420,6 +474,7 @@ mod tests {
 
     #[test]
     fn ripple_stays_in_bounds() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_params(LookParams::defaults(Look::Ripple));
         set_atmo(AtmosphereParams {
             smoke: 0.0,
@@ -433,6 +488,7 @@ mod tests {
 
     #[test]
     fn sat_letterbox_bars_are_dark() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -450,6 +506,7 @@ mod tests {
 
     #[test]
     fn none_look_is_clean_passthrough() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_atmo(AtmosphereParams::default());
         set_params(LookParams::defaults(Look::None));
         let rgb = sample_rgb(32, 24);
@@ -469,6 +526,8 @@ mod tests {
 
     #[test]
     fn film_bezel_is_dark() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -483,6 +542,7 @@ mod tests {
 
     #[test]
     fn waves_applies_sepia_and_warp() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -507,6 +567,9 @@ mod tests {
 
     #[test]
     fn smear_uses_previous_frame() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -530,6 +593,9 @@ mod tests {
 
     #[test]
     fn smear_warm_and_cold_differ() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -562,6 +628,7 @@ mod tests {
 
     #[test]
     fn smear_stays_in_bounds() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         set_params(LookParams::defaults(Look::Smear));
         set_atmo(AtmosphereParams {
             smoke: 0.0,
@@ -594,29 +661,28 @@ mod tests {
     }
 
     #[test]
-    fn wet_pct_changes_morph_output() {
+    fn morph_lines_slider_changes_output() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
         });
         let rgb = sample_rgb(32, 24);
         let def = Look::Morph.param_defs()[0];
-        let mut dry = LookParams::defaults(Look::Morph);
-        assert!(dry.apply_pct(0, def, 0.0));
-        set_params(dry);
+        let mut faint = LookParams::defaults(Look::Morph);
+        assert!(faint.apply_pct(0, def, 0.0));
+        set_params(faint);
         let a = apply(Look::Morph, &rgb, 32, 24);
 
-        let mut wet = LookParams::defaults(Look::Morph);
-        assert!(
-            !wet.apply_pct(0, def, 100.0),
-            "Morph wet default is already 100%"
-        );
-        set_params(wet);
+        let mut bold = LookParams::defaults(Look::Morph);
+        assert!(bold.apply_pct(0, def, 100.0));
+        set_params(bold);
         let b = apply(Look::Morph, &rgb, 32, 24);
 
-        assert_ne!(a, b, "wet 0 vs 100 must change the image");
-        assert!((dry.v(0) - 0.0).abs() < 0.001);
-        assert!((wet.v(0) - 1.0).abs() < 0.001);
+        assert_ne!(a, b, "lines 0 vs 100 must change the image");
+        assert!((faint.v(0) - 0.0).abs() < 0.001);
+        assert!((bold.v(0) - 1.0).abs() < 0.001);
     }
 
     #[test]

@@ -94,24 +94,29 @@ impl Look {
         match self {
             Look::None => &[],
             Look::Morph => &[
-                WET,
+                ParamDef {
+                    label: "lines",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.85,
+                },
                 ParamDef {
                     label: "edge",
                     min: 0.02,
                     max: 0.25,
-                    default: 0.08,
+                    default: 0.06,
                 },
                 ParamDef {
                     label: "ink",
                     min: 0.3,
                     max: 1.0,
-                    default: 0.92,
+                    default: 0.94,
                 },
                 ParamDef {
-                    label: "fill",
+                    label: "trail",
                     min: 0.0,
-                    max: 0.4,
-                    default: 0.18,
+                    max: 1.0,
+                    default: 0.72,
                 },
             ],
             Look::Vhs => &[
@@ -396,9 +401,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pct_roundtrip_wet() {
+    fn pct_roundtrip_lines() {
         let def = Look::Morph.param_defs()[0];
-        assert_eq!(def.label, "wet");
+        assert_eq!(def.label, "lines");
         assert!((def.from_pct(0.0) - 0.0).abs() < 0.0001);
         assert!((def.from_pct(100.0) - 1.0).abs() < 0.0001);
         assert!((def.from_pct(50.0) - 0.5).abs() < 0.0001);
@@ -424,7 +429,7 @@ mod tests {
     #[test]
     fn tile_line_names_the_effect() {
         assert_eq!(Look::Vhs.tile_line(), "tracking · wear");
-        assert_eq!(Look::Morph.tile_line(), "ink drawing");
+        assert_eq!(Look::Morph.tile_line(), "dark lines · color");
         assert_eq!(Look::None.tile_line(), "clean camera");
     }
 }
