@@ -1,0 +1,10 @@
+[package]
+name = "mirror-vfx"
+version = "0.1.0"
+edition = "2021"
+description = "Mirror VFX Engine — pure Rust real-time analog video & optical effects library"
+authors = ["Jon McMillion / New Tower"]
+license = "UNLICENSED"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -392,6 +392,300 @@ impl Look {
                     default: 0.48,
                 },
             ],
+            Look::Thermal => &[
+                WET,
+                ParamDef {
+                    label: "bias",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "mode",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.00,
+                },
+                ParamDef {
+                    label: "noise",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Xray => &[
+                WET,
+                ParamDef {
+                    label: "bone",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "glow",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "flicker",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.30,
+                },
+            ],
+            Look::Cyber => &[
+                WET,
+                ParamDef {
+                    label: "grid",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.70,
+                },
+                ParamDef {
+                    label: "bleed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "tint",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.00,
+                },
+            ],
+            Look::Noir => &[
+                WET,
+                ParamDef {
+                    label: "contrast",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "grain",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+                ParamDef {
+                    label: "vignette",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+            ],
+            Look::Glitch => &[
+                WET,
+                ParamDef {
+                    label: "tear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "shear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "glitch",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Mosh => &[
+                WET,
+                ParamDef {
+                    label: "smear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "blocks",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+                ParamDef {
+                    label: "drop",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+            ],
+            Look::Holo => &[
+                WET,
+                ParamDef {
+                    label: "beams",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "fringe",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "flicker",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.30,
+                },
+            ],
+            Look::Particles => &[
+                WET,
+                ParamDef {
+                    label: "volume",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+                ParamDef {
+                    label: "swirl",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
+            Look::Stamp => &[
+                WET,
+                ParamDef {
+                    label: "rate",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "scale",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+                ParamDef {
+                    label: "count",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+            ],
+            Look::Drift => &[
+                WET,
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "speed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+                ParamDef {
+                    label: "freq",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
+            Look::Echo => &[
+                WET,
+                ParamDef {
+                    label: "zoom",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "spin",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "decay",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+            ],
+            Look::Chrome => &[
+                WET,
+                ParamDef {
+                    label: "jitter",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "shine",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "patches",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+            ],
+            Look::Bounce => &[
+                WET,
+                ParamDef {
+                    label: "clones",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "speed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "decay",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+            ],
+            Look::Prism => &[
+                WET,
+                ParamDef {
+                    label: "split",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "angle",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+                ParamDef {
+                    label: "chroma",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+            ],
         }
     }
 }

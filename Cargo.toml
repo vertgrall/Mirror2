@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    ".",
+    "crates/mirror-vfx",
+]
+
 [package]
 name = "mirror2"
 version = "0.1.0"
@@ -7,6 +13,7 @@ authors = ["Jon McMillion / New Tower"]
 license = "UNLICENSED"
 
 [dependencies]
+mirror-vfx = { path = "crates/mirror-vfx" }
 async-io = "2"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -1,31 +1,39 @@
 //! VFX pipeline — composite → look → atmosphere.
 
 mod atmo;
-mod bg;
 mod beta;
+mod bounce;
 mod breathe;
 mod cctv;
-mod composite;
+mod chrome;
+mod cyber;
 mod d8;
+mod drift;
+mod echo;
 mod film;
+mod glitch;
 mod gx;
+mod holo;
 mod live;
 mod morph;
+mod mosh;
+mod noir;
 mod ops;
 mod osd;
 mod params;
+mod particles;
+mod prism;
 mod ripple;
 mod smear;
+mod stamp;
+mod thermal;
 mod waves;
 mod sat;
 mod state;
 mod uhf;
 mod vhs;
+mod xray;
 
-pub use bg::{
-    cycle_background, current_path, param_defs as bg_param_defs, params_from_values,
-    select_path, select_preset, set_params as set_background, wear_plate, BackgroundParams,
-};
 pub use atmo::{
     param_defs as atmo_param_defs, set_params as set_atmosphere, AtmosphereParams,
 };
@@ -36,6 +44,7 @@ pub use state::VfxState;
 use std::sync::{Mutex, OnceLock};
 
 static STATE: OnceLock<Mutex<VfxState>> = OnceLock::new();
+pub static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 fn vfx_state() -> &'static Mutex<VfxState> {
     STATE.get_or_init(|| Mutex::new(VfxState::default()))
@@ -45,6 +54,53 @@ fn vfx_state() -> &'static Mutex<VfxState> {
 pub fn reset_temporal() {
     if let Ok(mut state) = vfx_state().lock() {
         state.clear_temporal();
+    }
+}
+
+/// High-level VFX processing engine instance for standalone library consumers.
+#[derive(Default)]
+pub struct VfxEngine {
+    pub state: VfxState,
+}
+
+impl VfxEngine {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn reset(&mut self) {
+        self.state.clear_temporal();
+    }
+
+    pub fn apply(
+        &mut self,
+        look: Look,
+        rgb: &[u8],
+        w: u32,
+        h: u32,
+        look_params: &LookParams,
+        atmo_params: &AtmosphereParams,
+    ) -> Vec<u8> {
+        let n = (w as usize) * (h as usize);
+        assert_eq!(rgb.len(), n * 3);
+
+        self.state.advance(w, h, look.id());
+
+        let wet = look_params.wet();
+        let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
+            ops::rgb_to_rgba(rgb, w, h)
+        } else {
+            let mut looked = apply_look(look, rgb, w, h, &self.state, look_params);
+            if wet < 0.99 && !matches!(look, Look::Morph) {
+                ops::mix_look_over_rgb(&mut looked, rgb, wet);
+            }
+            if matches!(look, Look::Morph) {
+                self.state.commit_morph(&looked);
+            }
+            looked
+        };
+        self.state.commit_rgb(rgb);
+        atmo::apply(&rgba, w, h, &self.state, atmo_params)
     }
 }
 
@@ -65,10 +121,24 @@ pub enum Look {
     Breathe,
     Film,
     Waves,
+    Thermal,
+    Xray,
+    Cyber,
+    Noir,
+    Glitch,
+    Mosh,
+    Holo,
+    Particles,
+    Stamp,
+    Drift,
+    Echo,
+    Chrome,
+    Bounce,
+    Prism,
 }
 
 impl Look {
-    pub const RAIL: [Self; 15] = [
+    pub const RAIL: [Self; 29] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -84,6 +154,20 @@ impl Look {
         Self::Breathe,
         Self::Film,
         Self::Waves,
+        Self::Thermal,
+        Self::Xray,
+        Self::Cyber,
+        Self::Noir,
+        Self::Glitch,
+        Self::Mosh,
+        Self::Holo,
+        Self::Particles,
+        Self::Stamp,
+        Self::Drift,
+        Self::Echo,
+        Self::Chrome,
+        Self::Bounce,
+        Self::Prism,
     ];
 
     pub fn id(self) -> u8 {
@@ -103,6 +187,20 @@ impl Look {
             Self::Breathe => 12,
             Self::Film => 13,
             Self::Waves => 14,
+            Self::Thermal => 15,
+            Self::Xray => 16,
+            Self::Cyber => 17,
+            Self::Noir => 18,
+            Self::Glitch => 19,
+            Self::Mosh => 20,
+            Self::Holo => 21,
+            Self::Particles => 22,
+            Self::Stamp => 23,
+            Self::Drift => 24,
+            Self::Echo => 25,
+            Self::Chrome => 26,
+            Self::Bounce => 27,
+            Self::Prism => 28,
         }
     }
 
@@ -122,6 +220,20 @@ impl Look {
             12 => Self::Breathe,
             13 => Self::Film,
             14 => Self::Waves,
+            15 => Self::Thermal,
+            16 => Self::Xray,
+            17 => Self::Cyber,
+            18 => Self::Noir,
+            19 => Self::Glitch,
+            20 => Self::Mosh,
+            21 => Self::Holo,
+            22 => Self::Particles,
+            23 => Self::Stamp,
+            24 => Self::Drift,
+            25 => Self::Echo,
+            26 => Self::Chrome,
+            27 => Self::Bounce,
+            28 => Self::Prism,
             _ => Self::None,
         }
     }
@@ -143,6 +255,20 @@ impl Look {
             Self::Breathe => "BREATHE",
             Self::Film => "FILM",
             Self::Waves => "WAVES",
+            Self::Thermal => "THERMAL",
+            Self::Xray => "XRAY",
+            Self::Cyber => "CYBER",
+            Self::Noir => "NOIR",
+            Self::Glitch => "GLITCH",
+            Self::Mosh => "MOSH",
+            Self::Holo => "HOLO",
+            Self::Particles => "PARTICLES",
+            Self::Stamp => "STAMP",
+            Self::Drift => "DRIFT",
+            Self::Echo => "ECHO",
+            Self::Chrome => "CHROME",
+            Self::Bounce => "BOUNCE",
+            Self::Prism => "PRISM",
         }
     }
 
@@ -163,6 +289,20 @@ impl Look {
             Self::Breathe => "inhale · exhale · whole frame scales",
             Self::Film => "35mm inset · sprockets · grain",
             Self::Waves => "sepia print · gate ripples · silver grain",
+            Self::Thermal => "FLIR heat vision · ironbow & rainbow gradients",
+            Self::Xray => "fluoroscopy radiograph · inverted contrast glow",
+            Self::Cyber => "Trinitron CRT · shadow mask & phosphor bleed",
+            Self::Noir => "40s Tri-X monochrome · crushed blacks & silver grain",
+            Self::Glitch => "analog sync tear · horizontal line displacement",
+            Self::Mosh => "datamosh compression · motion vector macroblocks",
+            Self::Holo => "cyberpunk laser grid · holographic scanlines",
+            Self::Particles => "pixel dust dispersal · floating particle swirl",
+            Self::Stamp => "3-second snapshot PIPs smeared into viewport corners",
+            Self::Drift => "slow undulating random LFO waveform distortion",
+            Self::Echo => "temporal feedback infinity mirror tunnel loop",
+            Self::Chrome => "super fast random coordinate metallic glinting",
+            Self::Bounce => "bouncing frame fragments cut from live feed",
+            Self::Prism => "triadic RGB spectral refraction & glass flare",
         }
     }
 
@@ -184,6 +324,20 @@ impl Look {
             Self::Breathe => "inhale · exhale",
             Self::Film => "sprockets · rebate",
             Self::Waves => "sepia · film",
+            Self::Thermal => "heat vision · FLIR",
+            Self::Xray => "radiograph · bone",
+            Self::Cyber => "Trinitron · CRT",
+            Self::Noir => "crushed · silver",
+            Self::Glitch => "sync tear · shear",
+            Self::Mosh => "datamosh · vector",
+            Self::Holo => "laser · hologram",
+            Self::Particles => "pixel dust · swirl",
+            Self::Stamp => "snapshot · corners",
+            Self::Drift => "slow lfo · wave",
+            Self::Echo => "feedback · tunnel",
+            Self::Chrome => "rapid · chrome",
+            Self::Bounce => "bouncing · clones",
+            Self::Prism => "refract · prism",
         }
     }
 
@@ -198,31 +352,28 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     assert_eq!(rgb.len(), n * 3);
 
     let look_params = current_params();
-    let bg_params = bg::current_params();
     let atmo_params = atmo::current_params();
-    let plate = bg::plate_for(w, h);
 
     let Ok(mut state) = vfx_state().lock() else {
         return ops::rgb_to_rgba(rgb, w, h);
     };
     state.advance(w, h, look.id());
 
-    let composited = composite::apply(rgb, w, h, plate.as_deref(), &bg_params);
     let wet = look_params.wet();
     let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
-        ops::rgb_to_rgba(&composited, w, h)
+        ops::rgb_to_rgba(rgb, w, h)
     } else {
-        let mut looked = apply_look(look, &composited, w, h, &state, &look_params);
+        let mut looked = apply_look(look, rgb, w, h, &state, &look_params);
         // Morph keeps the photo visible — lines slider lives inside the look.
         if wet < 0.99 && !matches!(look, Look::Morph) {
-            ops::mix_look_over_rgb(&mut looked, &composited, wet);
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
         }
         if matches!(look, Look::Morph) {
             state.commit_morph(&looked);
         }
         looked
     };
-    state.commit_rgb(&composited);
+    state.commit_rgb(rgb);
     atmo::apply(&rgba, w, h, &state, &atmo_params)
 }
 
@@ -250,6 +401,20 @@ fn apply_look(
         Look::Breathe => breathe::apply(rgb, w, h, state, params),
         Look::Film => film::apply(rgb, w, h, state, params),
         Look::Waves => waves::apply(rgb, w, h, state, params),
+        Look::Thermal => thermal::apply(rgb, w, h, state, params),
+        Look::Xray => xray::apply(rgb, w, h, state, params),
+        Look::Cyber => cyber::apply(rgb, w, h, state, params),
+        Look::Noir => noir::apply(rgb, w, h, state, params),
+        Look::Glitch => glitch::apply(rgb, w, h, state, params),
+        Look::Mosh => mosh::apply(rgb, w, h, state, params),
+        Look::Holo => holo::apply(rgb, w, h, state, params),
+        Look::Particles => particles::apply(rgb, w, h, state, params),
+        Look::Stamp => stamp::apply(rgb, w, h, state, params),
+        Look::Drift => drift::apply(rgb, w, h, state, params),
+        Look::Echo => echo::apply(rgb, w, h, state, params),
+        Look::Chrome => chrome::apply(rgb, w, h, state, params),
+        Look::Bounce => bounce::apply(rgb, w, h, state, params),
+        Look::Prism => prism::apply(rgb, w, h, state, params),
     }
 }
 
@@ -361,12 +526,12 @@ fn dist(x: f32, y: f32, ox: f32, oy: f32) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::sync::Mutex;
     use atmo::set_params as set_atmo;
 
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    pub static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn sample_rgb(w: u32, h: u32) -> Vec<u8> {
         let mut v = vec![0u8; (w * h * 3) as usize];
@@ -459,7 +624,6 @@ mod tests {
     fn morph_lines_zero_is_clean_photo() {
         let _lock = TEST_MUTEX.lock().unwrap();
         reset_temporal();
-        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -487,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn sat_letterbox_bars_are_dark() {
+    fn sat_applies_fullscreen() {
         let _lock = TEST_MUTEX.lock().unwrap();
         set_atmo(AtmosphereParams {
             smoke: 0.0,
@@ -496,12 +660,8 @@ mod tests {
         set_params(LookParams::defaults(Look::Sat));
         let rgb = vec![200u8; 640 * 480 * 3];
         let out = apply(Look::Sat, &rgb, 640, 480);
-        let (bar, active) = ops::letterbox_bars_16x9(480);
-        let ww = 640usize;
-        let top = out[0];
-        let mid = out[((bar + active / 2) * ww + 320) * 4];
-        assert!(top < 30, "top bar should be near black, got {top}");
-        assert!(mid > 100, "picture area should stay bright, got {mid}");
+        assert_eq!(out.len(), 640 * 480 * 4);
+        assert!(out[0] > 100, "top edge should be styled, got {}", out[0]);
     }
 
     #[test]
@@ -518,16 +678,14 @@ mod tests {
     fn app_defaults_are_no_fx() {
         assert!(Look::None.is_none());
         assert_eq!(Look::from_id(0), Look::None);
-        assert!(!BackgroundParams::default().enabled);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 15);
+        assert_eq!(Look::RAIL.len(), 29);
     }
 
     #[test]
-    fn film_bezel_is_dark() {
+    fn film_applies_fullscreen() {
         let _lock = TEST_MUTEX.lock().unwrap();
-        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -535,9 +693,7 @@ mod tests {
         set_params(LookParams::defaults(Look::Film));
         let rgb = vec![200u8; 640 * 480 * 3];
         let out = apply(Look::Film, &rgb, 640, 480);
-        assert!(out[0] < 40, "outer shell should be dark");
-        let inner = out[((240 * 640) + 320) * 4];
-        assert!(inner > 100, "inner picture should stay bright");
+        assert!(out[0] > 100, "outer shell should be styled, got {}", out[0]);
     }
 
     #[test]
@@ -569,7 +725,6 @@ mod tests {
     fn smear_uses_previous_frame() {
         let _lock = TEST_MUTEX.lock().unwrap();
         reset_temporal();
-        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()
@@ -595,7 +750,6 @@ mod tests {
     fn smear_warm_and_cold_differ() {
         let _lock = TEST_MUTEX.lock().unwrap();
         reset_temporal();
-        bg::set_params(BackgroundParams::default());
         set_atmo(AtmosphereParams {
             smoke: 0.0,
             ..Default::default()

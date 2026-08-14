@@ -29,21 +29,16 @@ pub fn apply(rgb: &[u8], w: u32, h: u32, state: &VfxState, p: &LookParams) -> Ve
 
     let cx = w as f32 * 0.5;
     let cy = h as f32 * 0.48;
-    let edge = (12u8, 11u8, 10u8);
 
     let mut out = vec![0u8; ww * hh * 4];
     for y in 0..hh {
         for x in 0..ww {
             let xf = x as f32;
             let yf = y as f32;
-            let sx = (xf - cx) / scale + cx;
-            let sy = (yf - cy) / scale + cy;
+            let sx = ((xf - cx) / scale + cx).clamp(0.0, w as f32 - 1.001);
+            let sy = ((yf - cy) / scale + cy).clamp(0.0, h as f32 - 1.001);
 
-            let (mut r, mut g, mut b) = if sx >= 0.0 && sy >= 0.0 && sx < w as f32 && sy < h as f32 {
-                sample_rgb(rgb, w, h, sx, sy)
-            } else {
-                edge
-            };
+            let (mut r, mut g, mut b) = sample_rgb(rgb, w, h, sx, sy);
 
             let inhale = eased.max(0.0);
             let vig = depth * 0.11 * inhale;

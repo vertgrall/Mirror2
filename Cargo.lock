@@ -2259,6 +2259,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mirror-vfx"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "mirror2"
 version = "0.1.0"
 dependencies = [
@@ -2276,6 +2283,7 @@ dependencies = [
  "freya-testing",
  "image",
  "keyboard-types",
+ "mirror-vfx",
  "objc",
  "png 0.17.16",
 ]

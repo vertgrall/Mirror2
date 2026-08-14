@@ -1,6 +1,6 @@
-//! SAT — dish feed. Macro rain fade, 16:9 letterbox inside 4:3.
+//! SAT — dish feed. Macro rain fade & satellite color/macro block pixelation.
 
-use super::ops::{hash2d, letterbox_bars_16x9, rgb_to_rgba};
+use super::ops::{hash2d, rgb_to_rgba};
 use super::params::LookParams;
 use super::state::VfxState;
 
@@ -13,14 +13,10 @@ pub fn apply(rgb: &[u8], w: u32, h: u32, state: &VfxState, p: &LookParams) -> Ve
     let block = p.v(2);
     let sat = p.v(3);
 
-    let (bar_top, active_h) = letterbox_bars_16x9(h);
-    let bar_bot = bar_top + active_h;
-
     let mut out = vec![0u8; ww * hh * 3];
     for y in 0..hh {
-        let in_letterbox = y >= bar_top && y < bar_bot;
         let rain_band = hash2d(0.0, y as f32 * 0.04 + state.frame as f32 * 0.2);
-        let rain_dim = if in_letterbox && rain_band > 1.0 - rain * 0.25 {
+        let rain_dim = if rain_band > 1.0 - rain * 0.25 {
             0.35 + rain * 0.25
         } else {
             1.0
@@ -28,16 +24,8 @@ pub fn apply(rgb: &[u8], w: u32, h: u32, state: &VfxState, p: &LookParams) -> Ve
 
         for x in 0..ww {
             let i = (y * ww + x) * 3;
-            if !in_letterbox {
-                out[i] = 8;
-                out[i + 1] = 8;
-                out[i + 2] = 10;
-                continue;
-            }
-
-            let y_rel = (y - bar_top) as u32;
             let bx = (x as u32 / BLOCK) * BLOCK + BLOCK / 2;
-            let by = (y_rel / BLOCK) * BLOCK + BLOCK / 2 + bar_top as u32;
+            let by = (y as u32 / BLOCK) * BLOCK + BLOCK / 2;
             let bx = bx.min(w - 1) as usize;
             let by = by.min(h - 1) as usize;
             let si = (by * ww + bx) * 3;

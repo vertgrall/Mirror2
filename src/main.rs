@@ -5,7 +5,6 @@ mod about;
 mod about_art;
 mod about_assets;
 mod about_launch;
-mod backgrounds;
 mod camera;
 mod effects;
 mod keep;
@@ -27,24 +26,13 @@ use async_io::Timer;
 use freya::prelude::*;
 
 use camera::CameraStatus;
-use effects::{
-    atmo_param_defs, bg_param_defs, bg_params_from_values, cycle_background, current_path,
-    set_atmosphere, set_background, set_params, wear_plate,
-    AtmosphereParams, BackgroundParams, Look, LookParams, ParamDef,
-};
-use backgrounds::{builtin_path, label as bg_label, PRESETS};
+use effects::{atmo_param_defs, set_atmosphere, set_params, AtmosphereParams, Look, LookParams, ParamDef};
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
 use theme::{Palette, Theme};
 
 const ICON: &[u8] = include_bytes!("../resources/icon-window.png");
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FxTab {
-    Look,
-    Bg,
-}
 
 pub fn is_debug() -> bool {
     static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -110,11 +98,6 @@ fn app() -> Element {
     let look = use_state(|| Look::None);
     let mut dock_page = use_state(|| 0usize);
     let params = use_state(|| LookParams::defaults(Look::None));
-    let bg_enabled = use_state(|| false);
-    let bg_values = use_state(|| {
-        let d = BackgroundParams::default();
-        [d.key_hue, d.key_width, d.feather, d.spill]
-    });
     let _atmo_values = use_state(|| {
         let d = AtmosphereParams::default();
         [d.smoke, d.density, d.drift, d.scale]
@@ -126,9 +109,7 @@ fn app() -> Element {
     let next_id = use_state(|| 1u64);
     let frame_seq = use_state(|| 0u64);
     let controls_rev = use_state(|| 0u32);
-    let mut fx_tab = use_state(|| FxTab::Look);
-
-    backgrounds::ensure_dir();
+    let bypass_countdown = use_state(|| false);
 
     use_future(move || {
         let mut shutter = shutter;
@@ -251,13 +232,7 @@ fn app() -> Element {
             }
             if shutter::is_space(&e.key, e.code) {
                 e.stop_propagation();
-                start_countdown(shutter);
-                return;
-            }
-            if matches!(&e.key, Key::Character(c) if c == "b" || c == "B") {
-                e.stop_propagation();
-                fx_tab.set(FxTab::Bg);
-                request_redraw();
+                trigger_capture(*bypass_countdown.peek(), shutter, next_id, keeps, keep_error);
             }
         })
         .child(
@@ -267,17 +242,23 @@ fn app() -> Element {
                 .height(Size::fill())
                 .spacing(theme::GAP)
                 .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-                .child(header(palette, &status, ui_theme, fx_tab))
+                .child(header(palette, &status, ui_theme))
                 .child(stage_well(palette, current_look, seq))
-                .child(shutter_button(palette, shutter, shutter_now, countdown))
+                .child(shutter_button(
+                    palette,
+                    shutter,
+                    shutter_now,
+                    countdown,
+                    bypass_countdown,
+                    next_id,
+                    keeps,
+                    keep_error,
+                ))
                 .child(fx_band_panel(
                     palette,
-                    fx_tab,
                     current_look,
                     current_params,
                     params,
-                    bg_enabled,
-                    bg_values,
                     controls_rev,
                     page,
                     err,
@@ -321,6 +302,46 @@ fn start_countdown(mut shutter: State<Shutter>) {
     }
 }
 
+fn trigger_capture(
+    bypass: bool,
+    mut shutter: State<Shutter>,
+    mut next_id: State<u64>,
+    mut keeps: State<Vec<KeepShot>>,
+    mut keep_error: State<Option<String>>,
+) {
+    if !matches!(*shutter.peek(), Shutter::Idle) {
+        return;
+    }
+    if bypass {
+        let shot_id = *next_id.peek();
+        if let Some(frame) = camera::snapshot_for_keep() {
+            match keep::save_keep(
+                shot_id,
+                frame.width,
+                frame.height,
+                frame.rgba.as_ref(),
+            ) {
+                Ok(shot) => {
+                    *next_id.write() = shot_id + 1;
+                    let mut list = keeps.peek().clone();
+                    list.insert(0, shot);
+                    list.truncate(10);
+                    *keeps.write() = list;
+                    *keep_error.write() = None;
+                }
+                Err(err) => *keep_error.write() = Some(err),
+            }
+        }
+        let next = Shutter::Flash {
+            started: Instant::now(),
+        };
+        shutter::publish(next);
+        *shutter.write() = next;
+    } else {
+        start_countdown(shutter);
+    }
+}
+
 /// Header status. Short enough to live in the right 200px of a 480 window.
 fn status_copy(status: &CameraStatus) -> String {
     match status {
@@ -354,10 +375,8 @@ fn header(
     palette: Palette,
     status: &CameraStatus,
     mut ui_theme: State<Theme>,
-    mut fx_tab: State<FxTab>,
 ) -> Element {
     let theme_label = ui_theme().label();
-    let on_bg = fx_tab() == FxTab::Bg;
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
@@ -378,36 +397,6 @@ fn header(
                                 .font_size(theme::FONT_SMALL)
                                 .font_weight(FontWeight::BOLD)
                                 .color(palette.text),
-                        ),
-                )
-                .child(gutter())
-                .child(
-                    rect()
-                        .padding(Gaps::new(1., 5., 1., 5.))
-                        .background(if on_bg {
-                            palette.fill_hi
-                        } else {
-                            palette.fill
-                        })
-                        .border(theme::border_all(if on_bg {
-                            palette.accent
-                        } else {
-                            palette.stroke_soft
-                        }))
-                        .on_mouse_up(move |_| {
-                            fx_tab.set(FxTab::Bg);
-                            request_redraw();
-                        })
-                        .child(
-                            label()
-                                .text("BG")
-                                .font_size(9.)
-                                .font_weight(FontWeight::BOLD)
-                                .color(if on_bg {
-                                    palette.accent
-                                } else {
-                                    palette.text_dim
-                                }),
                         ),
                 )
                 .child(gutter())
@@ -446,50 +435,35 @@ fn header(
 
 fn fx_band_panel(
     palette: Palette,
-    fx_tab: State<FxTab>,
     look: Look,
     values: LookParams,
     params: State<LookParams>,
-    bg_enabled: State<bool>,
-    bg_values: State<[f32; 4]>,
     controls_rev: State<u32>,
     page: usize,
     err: Option<String>,
 ) -> Element {
-    let tab = fx_tab();
-    let mut col = rect()
+    rect()
         .vertical()
         .width(Size::px(theme::WINDOW_W))
         .height(Size::px(theme::FX_BAND_H))
         .spacing(3.)
         .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-        .child(fx_tab_bar(palette, fx_tab, look, tab, page));
-
-    col = match tab {
-        FxTab::Look => col.child(look_fx_body(
+        .child(fx_tab_bar(palette, look, page))
+        .child(look_fx_body(
             palette,
             look,
             values,
             params,
             controls_rev,
             page,
-        )),
-        FxTab::Bg => col.child(background_controls(
-            palette,
-            bg_enabled,
-            bg_values,
-            controls_rev,
-        )),
-    };
-
-    col.child(footer(palette, err)).into()
+        ))
+        .child(footer(palette, err))
+        .into()
 }
 
 fn fx_tab_bar(
     palette: Palette,
-    fx_tab: State<FxTab>,
     look: Look,
-    tab: FxTab,
     page: usize,
 ) -> Element {
     rect()
@@ -503,33 +477,11 @@ fn fx_tab_bar(
                 .spacing(4.)
                 .cross_align(Alignment::Center)
                 .child(gutter())
-                .child(fx_tab_chip(palette, "LOOK", tab == FxTab::Look, {
-                    let mut t = fx_tab;
-                    move |_| {
-                        t.set(FxTab::Look);
-                        request_redraw();
-                    }
-                }))
-                .child(fx_tab_chip(palette, "BG", tab == FxTab::Bg, {
-                    let mut t = fx_tab;
-                    move |_| {
-                        t.set(FxTab::Bg);
-                        request_redraw();
-                    }
-                }))
+                .child(fx_tab_chip(palette, "LOOK", true, |_| {}))
                 .child(gutter())
                 .child(
                     label()
-                        .text(if tab == FxTab::Bg {
-                            format!(
-                                "plate · {}",
-                                current_path()
-                                    .map(|p| bg_label(&p))
-                                    .unwrap_or_else(|| "VOID".into())
-                            )
-                        } else {
-                            format!("{}  ·  {}", look.label(), look.tile_line())
-                        })
+                        .text(format!("{}  ·  {}", look.label(), look.tile_line()))
                         .font_size(theme::FONT_SMALL)
                         .font_weight(FontWeight::BOLD)
                         .color(palette.text),
@@ -537,12 +489,10 @@ fn fx_tab_bar(
         )
         .child(
             label()
-                .text(if tab == FxTab::Look {
+                .text({
                     let start = dock_start(page);
                     let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
                     format!("{}–{} of {}", start + 1, end, Look::RAIL.len())
-                } else {
-                    "presets + folder".into()
                 })
                 .font_size(theme::FONT_SMALL)
                 .color(palette.muted),
@@ -797,83 +747,6 @@ fn stage_well(palette: Palette, look: Look, seq: u64) -> Element {
         .into()
 }
 
-fn background_controls(
-    palette: Palette,
-    bg_enabled: State<bool>,
-    bg_values: State<[f32; 4]>,
-    controls_rev: State<u32>,
-) -> Element {
-    let enabled = bg_enabled();
-    let values = bg_values();
-
-    let mut panel = rect().vertical().width(Size::fill()).spacing(3.);
-
-    let mut presets = rect()
-        .horizontal()
-        .spacing(3.)
-        .cross_align(Alignment::Center);
-    presets = presets.child({
-        let mut en = bg_enabled;
-        let vals = bg_values;
-        let mut rev = controls_rev;
-        bg_action_chip(
-            palette,
-            if enabled { "BG ON" } else { "BG OFF" },
-            enabled,
-            move |_| {
-                let next = !*en.peek();
-                *en.write() = next;
-                sync_background(next, *vals.peek());
-                touch_controls(&mut rev);
-            },
-        )
-    });
-    for &(id, label) in PRESETS {
-        presets = presets.child({
-            let rev = controls_rev;
-            let vals = bg_values;
-            let en = bg_enabled;
-            bg_action_chip(palette, label, false, move |_| {
-                apply_bg_plate(builtin_path(id), en, vals, rev);
-            })
-        });
-    }
-    presets = presets.child({
-        let mut en = bg_enabled;
-        let vals = bg_values;
-        let mut rev = controls_rev;
-        bg_action_chip(palette, "NEXT", false, move |_| {
-            cycle_background();
-            if !*en.peek() {
-                *en.write() = true;
-            }
-            sync_background(true, *vals.peek());
-            touch_controls(&mut rev);
-        })
-    });
-    presets = presets.child(bg_action_chip(palette, "FOLDER", false, |_| {
-        backgrounds::reveal_folder();
-    }));
-    panel = panel.child(presets);
-
-    panel = panel.child(
-        label()
-            .text("drop PNG/JPEG in folder · NEXT cycles plates")
-            .font_size(9.)
-            .color(palette.muted),
-    );
-
-    for (index, def) in bg_param_defs().iter().enumerate() {
-        panel = panel.child(kit_slider(palette, *def, values[index], {
-            let mut vals = bg_values;
-            let en = bg_enabled;
-            let mut rev = controls_rev;
-            move |pct| write_bg_pct(&mut vals, en, index, *def, pct, &mut rev)
-        }));
-    }
-    panel.into()
-}
-
 fn atmosphere_controls(
     palette: Palette,
     atmo_values: State<[f32; 4]>,
@@ -953,51 +826,6 @@ fn kit_slider(
         .into()
 }
 
-fn bg_action_chip(
-    palette: Palette,
-    text: &'static str,
-    selected: bool,
-    on_press: impl FnMut(Event<MouseEventData>) + 'static,
-) -> Element {
-    rect()
-        .padding(Gaps::new(4., 8., 4., 8.))
-        .background(if selected {
-            palette.fill_hi
-        } else {
-            palette.fill
-        })
-        .on_mouse_up(on_press)
-        .child(
-            label()
-                .text(text)
-                .font_size(theme::FONT_SMALL)
-                .color(if selected {
-                    palette.text
-                } else {
-                    palette.text_dim
-                }),
-        )
-        .into()
-}
-
-fn sync_background(enabled: bool, values: [f32; 4]) {
-    set_background(bg_params_from_values(values, enabled));
-}
-
-fn apply_bg_plate(
-    path: std::path::PathBuf,
-    mut bg_enabled: State<bool>,
-    bg_values: State<[f32; 4]>,
-    mut controls_rev: State<u32>,
-) {
-    wear_plate(path);
-    if !*bg_enabled.peek() {
-        *bg_enabled.write() = true;
-    }
-    sync_background(true, *bg_values.peek());
-    touch_controls(&mut controls_rev);
-}
-
 fn sync_atmosphere(values: [f32; 4]) {
     set_atmosphere(AtmosphereParams {
         smoke: values[0],
@@ -1042,27 +870,6 @@ fn write_param_pct(
     request_redraw();
 }
 
-fn write_bg_pct(
-    bg_values: &mut State<[f32; 4]>,
-    bg_enabled: State<bool>,
-    index: usize,
-    def: ParamDef,
-    pct: f64,
-    controls_rev: &mut State<u32>,
-) {
-    let v = def.from_pct(pct);
-    let mut p = *bg_values.peek();
-    if (p[index] - v).abs() < 0.0005 {
-        return;
-    }
-    p[index] = v;
-    bg_values.set(p);
-    sync_background(*bg_enabled.peek(), p);
-    throttle_refresh_preview();
-    *controls_rev.write() += 1;
-    request_redraw();
-}
-
 fn write_atmo_pct(
     atmo_values: &mut State<[f32; 4]>,
     index: usize,
@@ -1100,6 +907,10 @@ fn shutter_button(
     shutter: State<Shutter>,
     shutter_now: Shutter,
     countdown: Option<u32>,
+    bypass_countdown: State<bool>,
+    next_id: State<u64>,
+    keeps: State<Vec<KeepShot>>,
+    keep_error: State<Option<String>>,
 ) -> Element {
     let busy = !matches!(shutter_now, Shutter::Idle);
     let label_text = if let Some(n) = countdown {
@@ -1109,6 +920,7 @@ fn shutter_button(
     } else {
         String::new()
     };
+    let is_bypass = *bypass_countdown.peek();
 
     rect()
         .horizontal()
@@ -1134,10 +946,63 @@ fn shutter_button(
                 .main_align(Alignment::Center)
                 .cross_align(Alignment::Center)
                 .a11y_focusable(true)
-                .on_press(move |_| start_countdown(shutter))
+                .on_press(move |_| {
+                    trigger_capture(is_bypass, shutter, next_id, keeps, keep_error)
+                })
                 .child(shutter_face(label_text)),
         )
-        .child(px_spacer(theme::SHUTTER_SIDE))
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::px(theme::SHUTTER_SIDE))
+                .height(Size::px(theme::SHUTTER_D))
+                .main_align(Alignment::Center)
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .on_press({
+                    let mut b = bypass_countdown;
+                    move |_| {
+                        let next = !*b.peek();
+                        *b.write() = next;
+                        request_redraw();
+                    }
+                })
+                .child(
+                    rect()
+                        .width(Size::px(14.))
+                        .height(Size::px(14.))
+                        .corner_radius(3.)
+                        .background(if is_bypass {
+                            palette.accent
+                        } else {
+                            palette.fill
+                        })
+                        .border(theme::border_all(if is_bypass {
+                            palette.accent
+                        } else {
+                            palette.stroke
+                        }))
+                        .main_align(Alignment::Center)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(if is_bypass { "✓" } else { "" })
+                                .font_size(10.)
+                                .font_weight(FontWeight::BOLD)
+                                .color(palette.bg),
+                        ),
+                )
+                .child(
+                    label()
+                        .text("bypass 3s")
+                        .font_size(theme::FONT_SMALL)
+                        .color(if is_bypass {
+                            palette.text
+                        } else {
+                            palette.muted
+                        }),
+                ),
+        )
         .into()
 }
 
@@ -1477,27 +1342,8 @@ mod slider_ui_tests {
     }
 
     #[test]
-    fn click_bg_tab_shows_presets() {
-        effects::set_background(effects::BackgroundParams::default());
-        let mut test = TestingRunner::new(
-            app,
-            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
-            |_| {},
-            1.0,
-        )
-        .0;
-        test.sync_and_update();
-        click_label(&mut test, "BG");
-        test.sync_and_update();
-        assert!(has_label(&test, "BG ON") || has_label(&test, "BG OFF"));
-        assert!(has_label(&test, "SKY"));
-        assert!(has_label(&test, "FOLDER"));
-        assert!(has_label(&test, "NEXT"));
-    }
-
-    #[test]
     fn click_vhs_wears_on_camera() {
-        effects::set_background(effects::BackgroundParams::default());
+        let _lock = vfx::TEST_MUTEX.lock().unwrap();
         camera::set_look(Look::None);
         let mut test = TestingRunner::new(
             app,
@@ -1540,6 +1386,10 @@ mod slider_ui_tests {
 
     fn shutter_harness() -> impl IntoElement {
         let shutter = use_state(|| Shutter::Idle);
+        let bypass_countdown = use_state(|| false);
+        let next_id = use_state(|| 1u64);
+        let keeps = use_state(Vec::<KeepShot>::new);
+        let keep_error = use_state(|| None::<String>);
         let overlay = shutter::overlay_at(shutter(), Instant::now());
         let countdown = match overlay {
             shutter::Overlay::Digit(n) => Some(n),
@@ -1558,6 +1408,10 @@ mod slider_ui_tests {
                 shutter,
                 shutter(),
                 countdown,
+                bypass_countdown,
+                next_id,
+                keeps,
+                keep_error,
             ))
     }
 
@@ -1596,6 +1450,13 @@ mod slider_ui_tests {
         test.sync_and_update();
         test.press_key(Key::Character(" ".into()));
         assert!(has_label(&test, "3"), "spacebar starts the 3-2-1 count");
+    }
+
+    #[test]
+    fn bypass_countdown_checkbox_is_visible() {
+        let mut test = launch_test(shutter_harness);
+        test.sync_and_update();
+        assert!(has_label(&test, "bypass 3s"));
     }
 
     fn all_label_boxes(test: &TestingRunner) -> Vec<(String, f32, f32, f32, f32)> {

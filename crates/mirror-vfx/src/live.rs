@@ -1,6 +1,6 @@
 //! LIVE — broadcast truck. Interlace, tally, crush.
 
-use super::ops::{lerp_u8, rgb_to_rgba};
+use super::ops::lerp_u8;
 use super::params::LookParams;
 use super::state::VfxState;
 

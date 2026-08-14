@@ -53,6 +53,20 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Breathe => still_for!(Look::Breathe, "../assets/fx/breathe.jpg"),
         Look::Film => still_for!(Look::Film, "../assets/fx/film.jpg"),
         Look::Waves => still_for!(Look::Waves, "../assets/fx/waves.jpg"),
+        Look::Thermal => still_for!(Look::Thermal, "../assets/fx/cctv.jpg"),
+        Look::Xray => still_for!(Look::Xray, "../assets/fx/morph.jpg"),
+        Look::Cyber => still_for!(Look::Cyber, "../assets/fx/waves.jpg"),
+        Look::Noir => still_for!(Look::Noir, "../assets/fx/off.jpg"),
+        Look::Glitch => still_for!(Look::Glitch, "../assets/fx/vhs.jpg"),
+        Look::Mosh => still_for!(Look::Mosh, "../assets/fx/d8.jpg"),
+        Look::Holo => still_for!(Look::Holo, "../assets/fx/live.jpg"),
+        Look::Particles => still_for!(Look::Particles, "../assets/fx/smear.jpg"),
+        Look::Stamp => still_for!(Look::Stamp, "../assets/fx/d8.jpg"),
+        Look::Drift => still_for!(Look::Drift, "../assets/fx/ripple.jpg"),
+        Look::Echo => still_for!(Look::Echo, "../assets/fx/breathe.jpg"),
+        Look::Chrome => still_for!(Look::Chrome, "../assets/fx/sat.jpg"),
+        Look::Bounce => still_for!(Look::Bounce, "../assets/fx/d8.jpg"),
+        Look::Prism => still_for!(Look::Prism, "../assets/fx/waves.jpg"),
     }
 }
 
