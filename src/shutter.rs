@@ -79,6 +79,16 @@ pub fn is_escape(key: &keyboard_types::Key, code: keyboard_types::Code) -> bool 
         || *key == keyboard_types::Key::Named(keyboard_types::NamedKey::Escape)
 }
 
+pub fn is_arrow_left(key: &keyboard_types::Key, code: keyboard_types::Code) -> bool {
+    code == keyboard_types::Code::ArrowLeft
+        || *key == keyboard_types::Key::Named(keyboard_types::NamedKey::ArrowLeft)
+}
+
+pub fn is_arrow_right(key: &keyboard_types::Key, code: keyboard_types::Code) -> bool {
+    code == keyboard_types::Code::ArrowRight
+        || *key == keyboard_types::Key::Named(keyboard_types::NamedKey::ArrowRight)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,6 +186,22 @@ mod tests {
         assert!(!is_escape(
             &keyboard_types::Key::Character(" ".into()),
             keyboard_types::Code::Space
+        ));
+    }
+
+    #[test]
+    fn arrows_are_arrows() {
+        assert!(is_arrow_left(
+            &keyboard_types::Key::Named(keyboard_types::NamedKey::ArrowLeft),
+            keyboard_types::Code::ArrowLeft
+        ));
+        assert!(is_arrow_right(
+            &keyboard_types::Key::Named(keyboard_types::NamedKey::ArrowRight),
+            keyboard_types::Code::ArrowRight
+        ));
+        assert!(!is_arrow_left(
+            &keyboard_types::Key::Named(keyboard_types::NamedKey::ArrowRight),
+            keyboard_types::Code::ArrowRight
         ));
     }
 }

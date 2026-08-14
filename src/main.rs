@@ -41,8 +41,8 @@ fn main() {
             .with_window(
                 WindowConfig::new(app)
                     .with_title("Likeness")
-                    .with_size(560., 860.)
-                    .with_min_size(520., 820.)
+                    .with_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
+                    .with_min_size(theme::WINDOW_W as f64, theme::WINDOW_H as f64)
                     .with_background(palette.bg),
             ),
     );
@@ -51,7 +51,7 @@ fn main() {
 fn app() -> Element {
     let palette = Palette::app();
     let look = use_state(|| Look::None);
-    let mut sheet_open = use_state(|| false);
+    let mut dock_page = use_state(|| 0usize);
     let params = use_state(|| LookParams::defaults(Look::None));
     let bg_enabled = use_state(|| false);
     let bg_values = use_state(|| {
@@ -170,24 +170,25 @@ fn app() -> Element {
     let status = camera::status();
     let seq = *frame_seq.peek();
     let current_look = look();
-    let sheet_is_open = sheet_open();
-    let keeps_now = keeps.read().clone();
+    let current_params = params();
+    let page = dock_page();
+    let _keeps_now = keeps.read().clone();
     let err = keep_error.read().clone();
 
     rect()
         .vertical()
         .width(Size::fill())
         .height(Size::fill())
-        .overflow(Overflow::Clip)
         .background(palette.bg)
-        .padding(Gaps::new_all(16.))
-        .spacing(10.)
         .on_global_key_down(move |e: Event<KeyboardEventData>| {
-            if shutter::is_escape(&e.key, e.code) {
+            if shutter::is_arrow_left(&e.key, e.code) {
                 e.stop_propagation();
-                if *sheet_open.peek() {
-                    *sheet_open.write() = false;
-                }
+                step_dock(&mut dock_page, -1);
+                return;
+            }
+            if shutter::is_arrow_right(&e.key, e.code) {
+                e.stop_propagation();
+                step_dock(&mut dock_page, 1);
                 return;
             }
             if shutter::is_space(&e.key, e.code) {
@@ -195,23 +196,52 @@ fn app() -> Element {
                 start_countdown(shutter);
             }
         })
-        .child(header(palette, &status))
-        .child(stage_area(
-            palette,
-            look,
-            sheet_open,
-            params,
-            controls_rev,
-            sheet_is_open,
-            current_look,
-            shutter,
-            shutter_now,
-            countdown,
-            seq,
-        ))
-        .child(strip(palette, keeps_now))
-        .child(footer(palette, err))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::px(theme::WINDOW_W))
+                .height(Size::fill())
+                .spacing(theme::GAP)
+                .padding(Gaps::new(theme::GAP, 0., 0., 0.))
+                .child(header(palette, &status))
+                .child(stage_well(palette, current_look, seq))
+                .child(shutter_button(palette, shutter, shutter_now, countdown))
+                .child(look_fx_panel(
+                    palette,
+                    current_look,
+                    current_params,
+                    params,
+                    controls_rev,
+                    page,
+                    err,
+                ))
+                .child(look_dock(
+                    palette,
+                    look,
+                    params,
+                    controls_rev,
+                    dock_page,
+                    current_look,
+                    page,
+                )),
+        )
         .into()
+}
+
+fn dock_max() -> usize {
+    Look::RAIL.len().saturating_sub(theme::DOCK_VISIBLE)
+}
+
+fn dock_start(page: usize) -> usize {
+    page.min(dock_max())
+}
+
+fn step_dock(page: &mut State<usize>, delta: i32) {
+    let start = dock_start(*page.peek());
+    let next = (start as i32 + delta).clamp(0, dock_max() as i32) as usize;
+    if next != start {
+        *page.write() = next;
+    }
 }
 
 fn start_countdown(mut shutter: State<Shutter>) {
@@ -232,193 +262,210 @@ fn header(palette: Palette, status: &CameraStatus) -> Element {
     };
     rect()
         .horizontal()
-        .width(Size::fill())
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(20.))
         .main_align(Alignment::SpaceBetween)
         .cross_align(Alignment::Center)
+        .padding(Gaps::new(0., theme::GAP, 0., theme::GAP))
         .child(
             label()
                 .text("LIKENESS")
-                .font_size(18.)
+                .font_size(theme::FONT_SMALL)
                 .font_weight(FontWeight::BOLD)
                 .color(palette.text),
         )
         .child(
             label()
-                .text(format!("NEW TOWER  ·  {status_line}"))
-                .font_size(11.)
+                .text(status_line)
+                .font_size(theme::FONT_SMALL)
                 .color(palette.muted),
         )
         .into()
 }
 
-fn stage_area(
-    palette: Palette,
-    look_state: State<Look>,
-    sheet_open: State<bool>,
-    params: State<LookParams>,
-    controls_rev: State<u32>,
-    sheet_is_open: bool,
-    current_look: Look,
-    shutter: State<Shutter>,
-    shutter_now: Shutter,
-    countdown: Option<u32>,
-    seq: u64,
-) -> Element {
-    let mut col = rect()
-        .vertical()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .child(stage_well(palette, current_look, seq, sheet_open));
-    if sheet_is_open {
-        col = col.child(looks_sheet(
-            palette,
-            look_state,
-            sheet_open,
-            params,
-            controls_rev,
-            current_look,
-        ));
-    } else {
-        col = col.child(sheet_grabber(palette, sheet_open, false));
-    }
-    col.child(shutter_button(palette, shutter, shutter_now, countdown))
-        .into()
-}
-
-fn sheet_grabber(palette: Palette, mut sheet_open: State<bool>, open: bool) -> Element {
-    rect()
-        .vertical()
-        .width(Size::px(theme::VIEWFINDER_W))
-        .height(Size::px(32.))
-        .main_align(Alignment::Center)
-        .cross_align(Alignment::Center)
-        .spacing(6.)
-        .on_press(move |_| {
-            let next = !*sheet_open.peek();
-            *sheet_open.write() = next;
-        })
-        .child(
-            rect()
-                .width(Size::px(36.))
-                .height(Size::px(3.))
-                .corner_radius(2.)
-                .background(palette.muted),
-        )
-        .child(
-            label()
-                .text(if open { "looks" } else { "looks" })
-                .font_size(11.)
-                .color(palette.muted),
-        )
-        .into()
-}
-
-fn looks_sheet(
-    palette: Palette,
-    look_state: State<Look>,
-    sheet_open: State<bool>,
-    params: State<LookParams>,
-    controls_rev: State<u32>,
-    current_look: Look,
-) -> Element {
-    rect()
-        .vertical()
-        .width(Size::px(theme::VIEWFINDER_W))
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new(8., 12., 12., 12.))
-        .corner_radius(CornerRadius {
-            top_left: 10.,
-            top_right: 10.,
-            bottom_right: 0.,
-            bottom_left: 0.,
-            smoothing: 0.,
-        })
-        .background(palette.control)
-        .spacing(8.)
-        .child(sheet_grabber(palette, sheet_open, true))
-        .child(look_tile_grid(
-            palette,
-            look_state,
-            params,
-            controls_rev,
-            current_look,
-        ))
-        .into()
-}
-
-fn look_tile_grid(
-    palette: Palette,
-    look_state: State<Look>,
-    params: State<LookParams>,
-    controls_rev: State<u32>,
-    current_look: Look,
-) -> Element {
-    let mut col = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(8.);
-    for pair in Look::RAIL.chunks(2) {
-        let mut row = rect()
-            .horizontal()
-            .width(Size::fill())
-            .spacing(8.);
-        for &look in pair {
-            let mut looks = look_state;
-            let mut param_state = params;
-            let mut rev = controls_rev;
-            row = row.child(sheet_tile(
-                palette,
-                look,
-                look == current_look,
-                move |_| wear_look(look, &mut looks, &mut param_state, &mut rev),
-            ));
-        }
-        col = col.child(row);
-    }
-    col.into()
-}
-
-fn sheet_tile(
+fn look_fx_panel(
     palette: Palette,
     look: Look,
-    selected: bool,
+    values: LookParams,
+    params: State<LookParams>,
+    controls_rev: State<u32>,
+    page: usize,
+    err: Option<String>,
+) -> Element {
+    let start = dock_start(page);
+    let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
+    let count = format!("{}–{} of {}", start + 1, end, Look::RAIL.len());
+    let defs = look.param_defs();
+
+    let mut col = rect()
+        .vertical()
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(theme::FX_BAND_H))
+        .spacing(4.)
+        .padding(Gaps::new(theme::GAP, theme::GAP, 0., theme::GAP))
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(format!("{}  ·  {}", look.label(), look.tile_line()))
+                        .font_size(theme::FONT_SMALL)
+                        .font_weight(FontWeight::BOLD)
+                        .color(palette.text),
+                )
+                .child(
+                    label()
+                        .text(count)
+                        .font_size(theme::FONT_SMALL)
+                        .color(palette.muted),
+                ),
+        );
+
+    for (index, def) in defs.iter().enumerate() {
+        col = col.child(kit_slider(palette, *def, values.values[index], {
+            let mut param_state = params;
+            let mut rev = controls_rev;
+            move |pct| write_param_pct(&mut param_state, index, *def, pct, &mut rev)
+        }));
+    }
+    col.child(footer(palette, err)).into()
+}
+
+fn look_dock(
+    palette: Palette,
+    look_state: State<Look>,
+    params: State<LookParams>,
+    controls_rev: State<u32>,
+    mut page_state: State<usize>,
+    current_look: Look,
+    page: usize,
+) -> Element {
+    let start = dock_start(page);
+    let shown = &Look::RAIL[start..start + theme::DOCK_VISIBLE.min(Look::RAIL.len() - start)];
+
+    let mut cards = rect()
+        .horizontal()
+        .width(Size::flex(1.0))
+        .height(Size::px(theme::CARD_H))
+        .padding(Gaps::new(0., 10., 0., 10.))
+        .spacing(8.)
+        .cross_align(Alignment::Center);
+    for &look in shown {
+        cards = cards.child(look_card(
+            palette,
+            look,
+            look == current_look,
+            look_state,
+            params,
+            controls_rev,
+        ));
+    }
+
+    rect()
+        .horizontal()
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(theme::DOCK_H))
+        .background(palette.control)
+        .border(theme::border_top(palette.stroke_soft))
+        .cross_align(Alignment::Center)
+        .on_wheel(move |e: Event<WheelEventData>| {
+            if e.delta_y > 0.0 {
+                step_dock(&mut page_state, 1);
+            } else if e.delta_y < 0.0 {
+                step_dock(&mut page_state, -1);
+            }
+        })
+        .child(dock_chevron(palette, "<", move |_| {
+            step_dock(&mut page_state, -1)
+        }))
+        .child(cards)
+        .child(dock_chevron(palette, ">", move |_| {
+            step_dock(&mut page_state, 1)
+        }))
+        .into()
+}
+
+fn dock_chevron(
+    palette: Palette,
+    mark: &'static str,
     on_press: impl FnMut(Event<PressEventData>) + 'static,
 ) -> Element {
-    let title_color = if selected {
-        palette.bg
+    let edge = if mark == "<" {
+        theme::border_right(palette.stroke_soft)
     } else {
-        Color::from_rgb(236, 236, 232)
-    };
-    let line_color = if selected {
-        palette.bg
-    } else {
-        Color::from_rgb(160, 160, 154)
+        theme::border_left(palette.stroke_soft)
     };
     rect()
-        .width(Size::px(224.))
-        .height(Size::px(64.))
-        .corner_radius(6.)
-        .padding(Gaps::new(10., 12., 10., 12.))
-        .background(if selected {
-            palette.accent
-        } else {
-            palette.surface
-        })
-        .spacing(4.)
+        .width(Size::px(theme::CHEVRON_W))
+        .height(Size::px(theme::DOCK_H))
+        .background(palette.fill)
+        .border(edge)
+        .main_align(Alignment::Center)
+        .cross_align(Alignment::Center)
         .on_press(on_press)
         .child(
             label()
+                .text(mark)
+                .font_size(16.)
+                .color(palette.text),
+        )
+        .into()
+}
+
+fn wear_handler(
+    look: Look,
+    look_state: State<Look>,
+    params: State<LookParams>,
+    controls_rev: State<u32>,
+) -> impl FnMut(Event<PressEventData>) + 'static {
+    let mut looks = look_state;
+    let mut param_state = params;
+    let mut rev = controls_rev;
+    move |_| wear_look(look, &mut looks, &mut param_state, &mut rev)
+}
+
+fn look_card(
+    palette: Palette,
+    look: Look,
+    selected: bool,
+    look_state: State<Look>,
+    params: State<LookParams>,
+    controls_rev: State<u32>,
+) -> Element {
+    rect()
+        .width(Size::percent(33.0))
+        .height(Size::px(theme::CARD_H))
+        .corner_radius(theme::CARD_RADIUS)
+        .padding(Gaps::new_all(theme::CARD_PAD))
+        .background(if selected {
+            palette.fill_hi
+        } else {
+            palette.fill
+        })
+        .border(theme::border_all(if selected {
+            palette.stroke
+        } else {
+            palette.stroke
+        }))
+        .spacing(4.)
+        .on_press(wear_handler(look, look_state, params, controls_rev))
+        .child(
+            label()
                 .text(look.label())
-                .font_size(13.)
+                .font_size(theme::FONT_SMALL)
                 .font_weight(FontWeight::BOLD)
-                .color(title_color),
+                .color(palette.text)
+                .on_press(wear_handler(look, look_state, params, controls_rev)),
         )
         .child(
             label()
                 .text(look.tile_line())
-                .font_size(11.)
-                .color(line_color),
+                .font_size(theme::FONT_SMALL)
+                .color(palette.text_dim)
+                .on_press(wear_handler(look, look_state, params, controls_rev)),
         )
         .into()
 }
@@ -436,21 +483,11 @@ fn wear_look(
     apply_controls(defaults, controls_rev);
 }
 
-fn stage_well(
-    palette: Palette,
-    look: Look,
-    seq: u64,
-    mut sheet_open: State<bool>,
-) -> Element {
+fn stage_well(palette: Palette, look: Look, seq: u64) -> Element {
     rect()
         .width(Size::px(theme::VIEWFINDER_W))
         .height(Size::px(theme::VIEWFINDER_H))
         .background(palette.surface)
-        .on_press(move |_| {
-            if *sheet_open.peek() {
-                *sheet_open.write() = false;
-            }
-        })
         .child(
             canvas(RenderCallback::new({
                 move |ctx| {
@@ -627,19 +664,19 @@ fn bg_action_chip(
     rect()
         .padding(Gaps::new(4., 8., 4., 8.))
         .background(if selected {
-            palette.accent
+            palette.fill_hi
         } else {
-            Color::from_rgb(220, 220, 216)
+            palette.fill
         })
         .on_mouse_up(on_press)
         .child(
             label()
                 .text(text)
-                .font_size(9.)
+                .font_size(theme::FONT_SMALL)
                 .color(if selected {
-                    palette.bg
-                } else {
                     palette.text
+                } else {
+                    palette.text_dim
                 }),
         )
         .into()
@@ -762,24 +799,24 @@ fn shutter_button(
     };
 
     rect()
-        .vertical()
-        .cross_align(Alignment::Center)
-        .spacing(8.)
+        .horizontal()
+        .width(Size::px(theme::WINDOW_W))
+        .main_align(Alignment::Center)
         .child(
             rect()
-                .width(Size::px(72.))
-                .height(Size::px(72.))
-                .corner_radius(36.)
+                .width(Size::px(56.))
+                .height(Size::px(56.))
+                .corner_radius(28.)
                 .background(if busy {
                     palette.shutter_pressed
                 } else {
                     palette.shutter
                 })
                 .border(Border::new().fill(palette.bg).width(BorderWidth {
-                    top: 4.,
-                    right: 4.,
-                    bottom: 4.,
-                    left: 4.,
+                    top: 3.,
+                    right: 3.,
+                    bottom: 3.,
+                    left: 3.,
                 }))
                 .main_align(Alignment::Center)
                 .cross_align(Alignment::Center)
@@ -787,27 +824,21 @@ fn shutter_button(
                 .on_press(move |_| start_countdown(shutter))
                 .child(shutter_face(label_text)),
         )
-        .child(
-            label()
-                .text(if busy { "…" } else { "take picture" })
-                .font_size(11.)
-                .color(palette.muted),
-        )
         .into()
 }
 
 fn shutter_face(label_text: String) -> Element {
     if label_text.is_empty() {
         rect()
-            .width(Size::px(56.))
-            .height(Size::px(56.))
-            .corner_radius(28.)
+            .width(Size::px(44.))
+            .height(Size::px(44.))
+            .corner_radius(22.)
             .background(Color::from_rgb(255, 255, 255))
             .into()
     } else {
         label()
             .text(label_text)
-            .font_size(32.)
+            .font_size(24.)
             .font_weight(FontWeight::BOLD)
             .color(Color::WHITE)
             .into()
@@ -816,32 +847,21 @@ fn shutter_face(label_text: String) -> Element {
 
 fn strip(palette: Palette, keeps: Vec<KeepShot>) -> Element {
     if keeps.is_empty() {
-        return rect()
-            .width(Size::fill())
-            .height(Size::px(72.))
-            .main_align(Alignment::Center)
-            .cross_align(Alignment::Center)
-            .child(
-                label()
-                    .text("no pictures yet — tap the button or press space")
-                    .font_size(12.)
-                    .color(palette.muted),
-            )
-            .into();
+        return rect().width(Size::px(theme::WINDOW_W)).height(Size::px(0.)).into();
     }
 
     let mut row = rect()
         .horizontal()
-        .width(Size::fill())
-        .height(Size::px(72.))
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(48.))
         .spacing(6.)
         .overflow(Overflow::Clip);
     for shot in keeps {
         let path = shot.path.clone();
         row = row.child(
             rect()
-                .width(Size::px(96.))
-                .height(Size::px(72.))
+                .width(Size::px(64.))
+                .height(Size::px(48.))
                 .background(palette.surface)
                 .on_mouse_up(move |_| keep::reveal(&path))
                 .child(
@@ -861,23 +881,19 @@ fn strip(palette: Palette, keeps: Vec<KeepShot>) -> Element {
 }
 
 fn footer(palette: Palette, err: Option<String>) -> Element {
-    let text = err.unwrap_or_else(|| {
-        format!(
-            "{}  ·  click a still to open it",
-            keep::keep_dir().display()
-        )
-    });
+    let text = err.unwrap_or_else(|| "open folder".into());
     rect()
         .horizontal()
-        .width(Size::fill())
-        .main_align(Alignment::SpaceBetween)
-        .child(label().text(text).font_size(11.).color(palette.muted))
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(16.))
+        .padding(Gaps::new(0., theme::GAP, 0., theme::GAP))
+        .main_align(Alignment::End)
         .child(
             rect().on_mouse_up(|_| keep::reveal_folder()).child(
                 label()
-                    .text("open folder")
-                    .font_size(11.)
-                    .color(palette.text),
+                    .text(text)
+                    .font_size(theme::FONT_SMALL)
+                    .color(palette.muted),
             ),
         )
         .into()
@@ -900,35 +916,68 @@ mod slider_ui_tests {
         })
     }
 
-    fn sheet_harness() -> impl IntoElement {
+    fn app_shell_harness() -> impl IntoElement {
         let look = use_state(|| Look::None);
-        let mut sheet_open = use_state(|| false);
+        let dock_page = use_state(|| 0usize);
         let params = use_state(|| LookParams::defaults(Look::None));
         let controls_rev = use_state(|| 0u32);
         let current = look();
-        let open = sheet_open();
-        let mut col = rect()
+        let page = dock_page();
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .height(Size::fill())
+            .overflow(Overflow::Clip)
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .height(Size::func(|ctx| Some((ctx.parent - theme::DOCK_H).max(0.0))))
+                    .child(
+                        label()
+                            .text("stage")
+                            .font_size(theme::FONT_SMALL),
+                    ),
+            )
+            .child(look_dock(
+                Palette::app(),
+                look,
+                params,
+                controls_rev,
+                dock_page,
+                current,
+                page,
+            ))
+    }
+
+    fn dock_harness() -> impl IntoElement {
+        let look = use_state(|| Look::None);
+        let mut dock_page = use_state(|| 0usize);
+        let params = use_state(|| LookParams::defaults(Look::None));
+        let controls_rev = use_state(|| 0u32);
+        let current = look();
+        let page = dock_page();
+        rect()
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if shutter::is_escape(&e.key, e.code) && *sheet_open.peek() {
-                    *sheet_open.write() = false;
+                if shutter::is_arrow_left(&e.key, e.code) {
+                    step_dock(&mut dock_page, -1);
                 }
-            });
-        if open {
-            col = col.child(looks_sheet(
+                if shutter::is_arrow_right(&e.key, e.code) {
+                    step_dock(&mut dock_page, 1);
+                }
+            })
+            .child(look_dock(
                 Palette::app(),
                 look,
-                sheet_open,
                 params,
                 controls_rev,
+                dock_page,
                 current,
-            ));
-        } else {
-            col = col.child(sheet_grabber(Palette::app(), sheet_open, false));
-        }
-        col
+                page,
+            ))
     }
 
     fn has_label(test: &TestingRunner, text: &str) -> bool {
@@ -979,38 +1028,178 @@ mod slider_ui_tests {
         ));
     }
 
-    #[test]
-    fn sheet_starts_closed() {
-        let mut test = launch_test(sheet_harness);
-        test.sync_and_update();
-        assert!(has_label(&test, "looks"));
-        assert!(!has_label(&test, "VHS"));
-        assert!(!has_label(&test, "tracking · wear"));
+    fn label_box(test: &TestingRunner, text: &str) -> Option<(f32, f32, f32, f32)> {
+        test.find(|node, element| {
+            Label::try_downcast(element)
+                .filter(|label| label.text.as_ref() == text)
+                .map(|_| node)
+        })
+        .map(|node| {
+            let a = node.layout().area;
+            (a.min_x(), a.min_y(), a.size.width, a.size.height)
+        })
     }
 
     #[test]
-    fn click_looks_opens_card_grid_then_vhs_wears_on_camera() {
-        let mut test = launch_test(sheet_harness);
+    fn real_app_shows_dock_cards_in_window() {
+        const W: f32 = theme::WINDOW_W;
+        const H: f32 = theme::WINDOW_H;
+        let mut test = TestingRunner::new(app, Size2D::new(W, H), |_| {}, 1.0).0;
         test.sync_and_update();
-        click_label(&mut test, "looks");
+
+        let off = label_box(&test, "OFF").expect("OFF card name must exist");
+        let vhs = label_box(&test, "VHS").expect("VHS card name must exist");
+        let line = label_box(&test, "tracking · wear").expect("VHS line must exist");
+
+        assert!(
+            off.3 > 8.0 && off.2 > 8.0,
+            "OFF label collapsed: {off:?}"
+        );
+        assert!(
+            line.1 + line.3 <= H,
+            "card line is clipped by the window: {line:?} window_h={H}"
+        );
+        assert!(
+            off.1 >= H - theme::DOCK_H,
+            "OFF should sit inside the bottom {h}px, was y={}",
+            off.1,
+            h = theme::DOCK_H
+        );
+        assert!(
+            vhs.0 > off.0 + off.2,
+            "cards should sit in a row, not stacked. OFF={off:?} VHS={vhs:?}"
+        );
+        let well = test
+            .find(|node, element| {
+                Rect::try_downcast(element)
+                    .filter(|_| {
+                        (node.layout().area.size.width - theme::VIEWFINDER_W).abs() < 1.0
+                            && (node.layout().area.size.height - theme::VIEWFINDER_H).abs() < 1.0
+                    })
+                    .map(|_| node)
+            })
+            .expect("480×360 camera well");
+        let well_area = well.layout().area;
+        assert!(
+            well_area.min_x().abs() < 1.0,
+            "well must sit on the left edge, x={}",
+            well_area.min_x()
+        );
+        let dock = test
+            .find(|node, element| {
+                Rect::try_downcast(element)
+                    .filter(|_| {
+                        (node.layout().area.size.height - theme::DOCK_H).abs() < 1.0
+                            && node.layout().area.size.width > 400.0
+                    })
+                    .map(|_| node)
+            })
+            .expect("dock bar must span the window");
+        let dock_area = dock.layout().area;
+        assert!(
+            (dock_area.size.width - W).abs() < 2.0,
+            "dock width was {}",
+            dock_area.size.width
+        );
+        assert!(
+            dock_area.min_x().abs() < 1.0,
+            "dock must share the well's left edge, x={}",
+            dock_area.min_x()
+        );
+        assert!(
+            (dock_area.min_y() - (H - theme::DOCK_H)).abs() < 2.0,
+            "dock must sit on the window bottom, y={}..{}",
+            dock_area.min_y(),
+            dock_area.max_y()
+        );
+        assert!(
+            dock_area.max_y() <= H + 1.0,
+            "dock is clipped, max_y={}",
+            dock_area.max_y()
+        );
+        assert!(
+            (well_area.size.width - dock_area.size.width).abs() < 1.0,
+            "well and dock must be the same width"
+        );
+
+        let out = std::env::temp_dir().join("likeness-dock-verify.png");
+        test.render_to_file(&out);
+        assert!(out.exists(), "wrote {out:?}");
+    }
+
+    #[test]
+    fn dock_stays_visible_under_a_flex_stage() {
+        let mut test = launch_test(app_shell_harness);
+        test.sync_and_update();
+        assert!(has_label(&test, "OFF"), "cards must not be clipped off-screen");
+        assert!(has_label(&test, "VHS"));
+        let dock = test
+            .find(|node, element| {
+                Rect::try_downcast(element)
+                    .filter(|_| (node.layout().area.size.height - theme::DOCK_H).abs() < 1.0)
+                    .map(|_| node)
+            })
+            .expect("dock should keep its 88px height");
+        assert!(
+            dock.layout().area.size.width > 200.0,
+            "dock should span the window, not collapse"
+        );
+    }
+
+    #[test]
+    fn dock_shows_first_three_cards() {
+        let mut test = launch_test(dock_harness);
+        test.sync_and_update();
+        assert!(has_label(&test, "OFF"));
+        assert!(has_label(&test, "clean camera"));
+        assert!(has_label(&test, "MORPH"));
+        assert!(has_label(&test, "ink drawing"));
         assert!(has_label(&test, "VHS"));
         assert!(has_label(&test, "tracking · wear"));
-        assert!(has_label(&test, "ink drawing"));
-
-        click_label(&mut test, "VHS");
-        assert_eq!(camera::current_look(), Look::Vhs);
-        assert!(has_label(&test, "VHS"), "sheet stays open to compare looks");
+        assert!(!has_label(&test, "GX"));
+        assert!(!has_label(&test, "looks"));
     }
 
     #[test]
-    fn escape_hides_looks() {
-        let mut test = launch_test(sheet_harness);
+    fn click_vhs_wears_on_camera() {
+        camera::set_look(Look::None);
+        let mut test = TestingRunner::new(
+            app,
+            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
+            |_| {},
+            1.0,
+        )
+        .0;
         test.sync_and_update();
-        click_label(&mut test, "looks");
-        assert!(has_label(&test, "VHS"));
-        test.press_key(Key::Named(NamedKey::Escape));
-        assert!(!has_label(&test, "VHS"));
-        assert!(has_label(&test, "looks"));
+        assert!(!has_label(&test, "wet"), "OFF has no sliders");
+        click_label(&mut test, "tracking · wear");
+        assert_eq!(camera::current_look(), Look::Vhs);
+        assert!(has_label(&test, "VHS"), "dock stays up after a click");
+        assert!(has_label(&test, "wet"), "wearing VHS shows wet");
+        assert!(has_label(&test, "track"));
+        assert!(has_label(&test, "chroma"));
+        assert!(has_label(&test, "wear"));
+        let out = std::env::temp_dir().join("likeness-vhs-fx-verify.png");
+        test.render_to_file(&out);
+    }
+
+    #[test]
+    fn chevron_pages_the_catalog() {
+        let mut test = launch_test(dock_harness);
+        test.sync_and_update();
+        click_label(&mut test, ">");
+        assert!(has_label(&test, "GX"));
+        assert!(has_label(&test, "Hi8 · 1994"));
+        assert!(!has_label(&test, "OFF"));
+    }
+
+    #[test]
+    fn arrow_right_pages_the_catalog() {
+        let mut test = launch_test(dock_harness);
+        test.sync_and_update();
+        test.press_key(Key::Named(NamedKey::ArrowRight));
+        assert!(has_label(&test, "GX"));
+        assert!(!has_label(&test, "OFF"));
     }
 
     fn shutter_harness() -> impl IntoElement {
@@ -1041,12 +1230,12 @@ mod slider_ui_tests {
             .find(|node, element| {
                 Rect::try_downcast(element)
                     .filter(|_| {
-                        (node.layout().area.size.width - 72.0).abs() < 1.0
-                            && (node.layout().area.size.height - 72.0).abs() < 1.0
+                        (node.layout().area.size.width - 56.0).abs() < 1.0
+                            && (node.layout().area.size.height - 56.0).abs() < 1.0
                     })
                     .map(|_| node)
             })
-            .expect("72px shutter");
+            .expect("56px shutter");
         let area = btn.layout().area;
         test.click_cursor((
             area.min_x() as f64 + (area.size.width as f64) * 0.5,
@@ -1058,13 +1247,11 @@ mod slider_ui_tests {
     fn shutter_click_starts_countdown_at_three() {
         let mut test = launch_test(shutter_harness);
         test.sync_and_update();
-        assert!(has_label(&test, "take picture"));
         assert!(!has_label(&test, "3"));
 
         click_shutter(&mut test);
 
         assert!(has_label(&test, "3"), "first second of the count is 3");
-        assert!(has_label(&test, "…"));
     }
 
     #[test]
