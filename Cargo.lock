@@ -2260,14 +2260,14 @@ dependencies = [
 
 [[package]]
 name = "mirror-vfx"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
 ]
 
 [[package]]
 name = "mirror2"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-io",
  "block",
