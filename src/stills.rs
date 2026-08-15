@@ -36,6 +36,36 @@ macro_rules! still_for {
     }};
 }
 
+fn base_off_rgb() -> (u32, u32, &'static [u8]) {
+    static BASE: OnceLock<(u32, u32, Vec<u8>)> = OnceLock::new();
+    let (w, h, rgb) = BASE.get_or_init(|| {
+        let still = decode(include_bytes!("../assets/fx/off.jpg"));
+        let mut rgb = Vec::with_capacity((still.width * still.height * 3) as usize);
+        for chunk in still.rgba.chunks_exact(4) {
+            rgb.push(chunk[0]);
+            rgb.push(chunk[1]);
+            rgb.push(chunk[2]);
+        }
+        (still.width, still.height, rgb)
+    });
+    (*w, *h, rgb.as_slice())
+}
+
+macro_rules! render_still_for {
+    ($look:expr) => {{
+        static SLOT: OnceLock<Still> = OnceLock::new();
+        SLOT.get_or_init(|| {
+            let (w, h, rgb) = base_off_rgb();
+            let rgba = mirror_vfx::render_still_rgba($look, rgb, w, h);
+            Still {
+                width: w,
+                height: h,
+                rgba: rgba.into(),
+            }
+        })
+    }};
+}
+
 pub fn for_look(look: Look) -> &'static Still {
     match look {
         Look::None => still_for!(Look::None, "../assets/fx/off.jpg"),
@@ -53,20 +83,29 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Breathe => still_for!(Look::Breathe, "../assets/fx/breathe.jpg"),
         Look::Film => still_for!(Look::Film, "../assets/fx/film.jpg"),
         Look::Waves => still_for!(Look::Waves, "../assets/fx/waves.jpg"),
-        Look::Thermal => still_for!(Look::Thermal, "../assets/fx/cctv.jpg"),
-        Look::Xray => still_for!(Look::Xray, "../assets/fx/morph.jpg"),
-        Look::Cyber => still_for!(Look::Cyber, "../assets/fx/waves.jpg"),
-        Look::Noir => still_for!(Look::Noir, "../assets/fx/off.jpg"),
-        Look::Glitch => still_for!(Look::Glitch, "../assets/fx/vhs.jpg"),
-        Look::Mosh => still_for!(Look::Mosh, "../assets/fx/d8.jpg"),
-        Look::Holo => still_for!(Look::Holo, "../assets/fx/live.jpg"),
-        Look::Particles => still_for!(Look::Particles, "../assets/fx/smear.jpg"),
-        Look::Stamp => still_for!(Look::Stamp, "../assets/fx/d8.jpg"),
-        Look::Drift => still_for!(Look::Drift, "../assets/fx/ripple.jpg"),
-        Look::Echo => still_for!(Look::Echo, "../assets/fx/breathe.jpg"),
-        Look::Chrome => still_for!(Look::Chrome, "../assets/fx/sat.jpg"),
-        Look::Bounce => still_for!(Look::Bounce, "../assets/fx/d8.jpg"),
-        Look::Prism => still_for!(Look::Prism, "../assets/fx/waves.jpg"),
+
+        Look::Thermal => render_still_for!(Look::Thermal),
+        Look::Xray => render_still_for!(Look::Xray),
+        Look::Cyber => render_still_for!(Look::Cyber),
+        Look::Noir => render_still_for!(Look::Noir),
+        Look::Glitch => render_still_for!(Look::Glitch),
+        Look::Mosh => render_still_for!(Look::Mosh),
+        Look::Holo => render_still_for!(Look::Holo),
+        Look::Particles => render_still_for!(Look::Particles),
+        Look::Stamp => render_still_for!(Look::Stamp),
+        Look::Drift => render_still_for!(Look::Drift),
+        Look::Echo => render_still_for!(Look::Echo),
+        Look::Chrome => render_still_for!(Look::Chrome),
+        Look::Bounce => render_still_for!(Look::Bounce),
+        Look::Prism => render_still_for!(Look::Prism),
+        Look::Slitscan => render_still_for!(Look::Slitscan),
+        Look::Reaction => render_still_for!(Look::Reaction),
+        Look::Fluid => render_still_for!(Look::Fluid),
+        Look::Strata => render_still_for!(Look::Strata),
+        Look::Datamosh => render_still_for!(Look::Datamosh),
+        Look::Voronoi => render_still_for!(Look::Voronoi),
+        Look::Topo => render_still_for!(Look::Topo),
+        Look::Quantum => render_still_for!(Look::Quantum),
     }
 }
 
@@ -128,5 +167,26 @@ mod tests {
                 still.width as usize * still.height as usize * 4
             );
         }
+    }
+
+    #[test]
+    fn every_card_has_a_unique_graphic() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::collections::HashSet;
+        use std::hash::{Hash, Hasher};
+
+        let mut signatures = HashSet::new();
+        for look in Look::RAIL {
+            let still = for_look(look);
+            let mut hasher = DefaultHasher::new();
+            still.rgba.hash(&mut hasher);
+            let sig = hasher.finish();
+            assert!(
+                signatures.insert((sig, still.rgba.len())),
+                "DUPLICATE CARD GRAPHIC DETECTED for look: {:?}",
+                look
+            );
+        }
+        assert_eq!(signatures.len(), Look::RAIL.len(), "All cards must have unique graphics");
     }
 }

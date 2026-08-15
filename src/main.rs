@@ -1355,6 +1355,7 @@ mod slider_ui_tests {
         test.sync_and_update();
         assert!(!has_label(&test, "wet"), "OFF has no sliders");
         click_label(&mut test, "tracking · wear");
+        test.sync_and_update();
         assert_eq!(camera::current_look(), Look::Vhs);
         assert!(has_label(&test, "VHS"), "dock stays up after a click");
         assert!(has_label(&test, "wet"), "wearing VHS shows wet");
@@ -1626,6 +1627,7 @@ mod slider_ui_tests {
 
     #[test]
     fn export_readme_screenshots() {
+        let _lock = vfx::TEST_MUTEX.lock().unwrap();
         let shots = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/screenshots");
         std::fs::create_dir_all(&shots).expect("docs/screenshots");
 

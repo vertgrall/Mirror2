@@ -8,9 +8,11 @@ mod cctv;
 mod chrome;
 mod cyber;
 mod d8;
+mod datamosh;
 mod drift;
 mod echo;
 mod film;
+mod fluid;
 mod glitch;
 mod gx;
 mod holo;
@@ -23,16 +25,23 @@ mod osd;
 mod params;
 mod particles;
 mod prism;
+mod quantum;
+mod reaction;
 mod ripple;
+mod sat;
+mod slitscan;
 mod smear;
 mod stamp;
-mod thermal;
-mod waves;
-mod sat;
 mod state;
+mod strata;
+mod thermal;
+mod topo;
 mod uhf;
 mod vhs;
+mod voronoi;
+mod waves;
 mod xray;
+
 
 pub use atmo::{
     param_defs as atmo_param_defs, set_params as set_atmosphere, AtmosphereParams,
@@ -135,10 +144,18 @@ pub enum Look {
     Chrome,
     Bounce,
     Prism,
+    Slitscan,
+    Reaction,
+    Fluid,
+    Strata,
+    Datamosh,
+    Voronoi,
+    Topo,
+    Quantum,
 }
 
 impl Look {
-    pub const RAIL: [Self; 29] = [
+    pub const RAIL: [Self; 37] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -168,6 +185,14 @@ impl Look {
         Self::Chrome,
         Self::Bounce,
         Self::Prism,
+        Self::Slitscan,
+        Self::Reaction,
+        Self::Fluid,
+        Self::Strata,
+        Self::Datamosh,
+        Self::Voronoi,
+        Self::Topo,
+        Self::Quantum,
     ];
 
     pub fn id(self) -> u8 {
@@ -201,6 +226,14 @@ impl Look {
             Self::Chrome => 26,
             Self::Bounce => 27,
             Self::Prism => 28,
+            Self::Slitscan => 29,
+            Self::Reaction => 30,
+            Self::Fluid => 31,
+            Self::Strata => 32,
+            Self::Datamosh => 33,
+            Self::Voronoi => 34,
+            Self::Topo => 35,
+            Self::Quantum => 36,
         }
     }
 
@@ -234,6 +267,14 @@ impl Look {
             26 => Self::Chrome,
             27 => Self::Bounce,
             28 => Self::Prism,
+            29 => Self::Slitscan,
+            30 => Self::Reaction,
+            31 => Self::Fluid,
+            32 => Self::Strata,
+            33 => Self::Datamosh,
+            34 => Self::Voronoi,
+            35 => Self::Topo,
+            36 => Self::Quantum,
             _ => Self::None,
         }
     }
@@ -269,6 +310,14 @@ impl Look {
             Self::Chrome => "CHROME",
             Self::Bounce => "BOUNCE",
             Self::Prism => "PRISM",
+            Self::Slitscan => "SLITSCAN",
+            Self::Reaction => "REACTION",
+            Self::Fluid => "FLUID",
+            Self::Strata => "STRATA",
+            Self::Datamosh => "DATAMOSH",
+            Self::Voronoi => "VORONOI",
+            Self::Topo => "TOPO",
+            Self::Quantum => "QUANTUM",
         }
     }
 
@@ -303,6 +352,14 @@ impl Look {
             Self::Chrome => "super fast random coordinate metallic glinting",
             Self::Bounce => "bouncing frame fragments cut from live feed",
             Self::Prism => "triadic RGB spectral refraction & glass flare",
+            Self::Slitscan => "space-time slice depth remapping history ring",
+            Self::Reaction => "Turing Gray-Scott reaction-diffusion morphogenesis",
+            Self::Fluid => "Eulerian optical flow vector grid & liquid dye solver",
+            Self::Strata => "recursive homography feedback infinity mirror tunnel",
+            Self::Datamosh => "macroblock motion vector smearing & P-frame bleed",
+            Self::Voronoi => "dynamic Delaunay / Voronoi mosaic glass shatter",
+            Self::Topo => "2.5D scanline heightmap topographic landscape",
+            Self::Quantum => "2D spatial phase wave holographic light interference",
         }
     }
 
@@ -338,12 +395,41 @@ impl Look {
             Self::Chrome => "rapid · chrome",
             Self::Bounce => "bouncing · clones",
             Self::Prism => "refract · prism",
+            Self::Slitscan => "time slice · depth",
+            Self::Reaction => "Turing · morphogenesis",
+            Self::Fluid => "optical flow · liquid",
+            Self::Strata => "homography · feedback",
+            Self::Datamosh => "macroblock · mosh",
+            Self::Voronoi => "Delaunay · mosaic",
+            Self::Topo => "heightmap · contour",
+            Self::Quantum => "holographic · phase",
         }
     }
 
     pub fn is_none(self) -> bool {
         matches!(self, Self::None)
     }
+}
+
+/// Render a static preview frame RGBA for thumbnail generation using default parameters for `look`.
+pub fn render_still_rgba(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
+    let n = (w as usize) * (h as usize);
+    assert_eq!(rgb.len(), n * 3);
+    let mut state = VfxState::default();
+    let params = LookParams::defaults(look);
+
+    if look.is_none() {
+        return ops::rgb_to_rgba(rgb, w, h);
+    }
+
+    // Warm up state history across multiple iterations
+    for _ in 0..10 {
+        state.advance(w, h, look.id());
+        state.push_ring(rgb, 45);
+        state.commit_rgb(rgb);
+    }
+
+    apply_look(look, rgb, w, h, &state, &params)
 }
 
 /// RGB (mirrored) → RGBA through full pipeline.
@@ -358,6 +444,7 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
         return ops::rgb_to_rgba(rgb, w, h);
     };
     state.advance(w, h, look.id());
+    state.push_ring(rgb, 45);
 
     let wet = look_params.wet();
     let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
@@ -415,6 +502,14 @@ fn apply_look(
         Look::Chrome => chrome::apply(rgb, w, h, state, params),
         Look::Bounce => bounce::apply(rgb, w, h, state, params),
         Look::Prism => prism::apply(rgb, w, h, state, params),
+        Look::Slitscan => slitscan::apply(rgb, w, h, state, params),
+        Look::Reaction => reaction::apply(rgb, w, h, state, params),
+        Look::Fluid => fluid::apply(rgb, w, h, state, params),
+        Look::Strata => strata::apply(rgb, w, h, state, params),
+        Look::Datamosh => datamosh::apply(rgb, w, h, state, params),
+        Look::Voronoi => voronoi::apply(rgb, w, h, state, params),
+        Look::Topo => topo::apply(rgb, w, h, state, params),
+        Look::Quantum => quantum::apply(rgb, w, h, state, params),
     }
 }
 
@@ -680,7 +775,7 @@ pub mod tests {
         assert_eq!(Look::from_id(0), Look::None);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 29);
+        assert_eq!(Look::RAIL.len(), 37);
     }
 
     #[test]

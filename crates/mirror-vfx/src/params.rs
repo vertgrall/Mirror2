@@ -686,6 +686,174 @@ impl Look {
                     default: 0.50,
                 },
             ],
+            Look::Slitscan => &[
+                WET,
+                ParamDef {
+                    label: "depth",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "mode",
+                    min: 0.0,
+                    max: 2.0,
+                    default: 0.0,
+                },
+                ParamDef {
+                    label: "wave",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+            ],
+            Look::Reaction => &[
+                WET,
+                ParamDef {
+                    label: "feed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "kill",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "luma",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+            ],
+            Look::Fluid => &[
+                WET,
+                ParamDef {
+                    label: "viscosity",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "swirl",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "decay",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.30,
+                },
+            ],
+            Look::Strata => &[
+                WET,
+                ParamDef {
+                    label: "zoom",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "rotate",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "decay",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.70,
+                },
+            ],
+            Look::Datamosh => &[
+                WET,
+                ParamDef {
+                    label: "block",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+                ParamDef {
+                    label: "mosh",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+                ParamDef {
+                    label: "trail",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+            ],
+            Look::Voronoi => &[
+                WET,
+                ParamDef {
+                    label: "seeds",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "jitter",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+                ParamDef {
+                    label: "stroke",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Topo => &[
+                WET,
+                ParamDef {
+                    label: "altitude",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "contour",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "wire",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.0,
+                },
+            ],
+            Look::Quantum => &[
+                WET,
+                ParamDef {
+                    label: "freq",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "phase",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "iridescence",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+            ],
         }
     }
 }

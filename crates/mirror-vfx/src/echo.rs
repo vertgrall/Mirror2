@@ -28,28 +28,25 @@ pub fn apply(rgb: &[u8], w: u32, h: u32, state: &VfxState, p: &LookParams) -> Ve
             let cur_g = rgb[i + 1];
             let cur_b = rgb[i + 2];
 
-            if let Some(prior) = prev {
-                // Apply reverse scale and rotation to sample recursive feedback frame
-                let cos_a = spin.cos();
-                let sin_a = spin.sin();
+            let cos_a = spin.cos();
+            let sin_a = spin.sin();
 
-                let rx = (xf * cos_a - yf * sin_a) / zoom + cx;
-                let ry = (xf * sin_a + yf * cos_a) / zoom + cy;
+            let rx = (xf * cos_a - yf * sin_a) / zoom + cx;
+            let ry = (xf * sin_a + yf * cos_a) / zoom + cy;
 
-                let sx = rx.clamp(0.0, w as f32 - 1.001);
-                let sy = ry.clamp(0.0, h as f32 - 1.001);
+            let sx = rx.clamp(0.0, w as f32 - 1.001);
+            let sy = ry.clamp(0.0, h as f32 - 1.001);
 
-                let (pr, pg, pb) = sample_rgb(prior, w, h, sx, sy);
-
-                // Blend live frame with temporal feedback trail
-                out[i] = lerp_u8(cur_r, pr, decay);
-                out[i + 1] = lerp_u8(cur_g, pg, decay);
-                out[i + 2] = lerp_u8(cur_b, pb, decay);
+            let (pr, pg, pb) = if let Some(prior) = prev {
+                sample_rgb(prior, w, h, sx, sy)
             } else {
-                out[i] = cur_r;
-                out[i + 1] = cur_g;
-                out[i + 2] = cur_b;
-            }
+                sample_rgb(rgb, w, h, sx, sy)
+            };
+
+            // Blend live frame with temporal feedback trail
+            out[i] = lerp_u8(cur_r, pr, decay);
+            out[i + 1] = lerp_u8(cur_g, pg, decay);
+            out[i + 2] = lerp_u8(cur_b, pb, decay);
         }
     }
     rgb_to_rgba(&out, w, h)
