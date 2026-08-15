@@ -20,6 +20,14 @@ pub struct VfxState {
     pub fluid_dye_b: Vec<f32>,
     pub strata_prev: Option<Vec<u8>>,
     pub mosh_rgb: Option<Vec<u8>>,
+    /// Normalized pointer in frame space (0–1). Used by SMUDGE / POSSESS.
+    pub pointer_x: f32,
+    pub pointer_y: f32,
+    pub pointer_down: bool,
+    /// Afterimage burn-in buffer for POSSESS.
+    pub burn_r: Vec<f32>,
+    pub burn_g: Vec<f32>,
+    pub burn_b: Vec<f32>,
 }
 
 impl Default for VfxState {
@@ -43,6 +51,12 @@ impl Default for VfxState {
             fluid_dye_b: Vec::new(),
             strata_prev: None,
             mosh_rgb: None,
+            pointer_x: 0.5,
+            pointer_y: 0.5,
+            pointer_down: false,
+            burn_r: Vec::new(),
+            burn_g: Vec::new(),
+            burn_b: Vec::new(),
         }
     }
 }
@@ -68,6 +82,9 @@ impl VfxState {
             self.fluid_dye_b.clear();
             self.strata_prev = None;
             self.mosh_rgb = None;
+            self.burn_r.clear();
+            self.burn_g.clear();
+            self.burn_b.clear();
         }
         self.frame = self.frame.wrapping_add(1);
         self.smoke_phase += 0.016;
@@ -88,6 +105,23 @@ impl VfxState {
         self.fluid_dye_b.clear();
         self.strata_prev = None;
         self.mosh_rgb = None;
+        self.burn_r.clear();
+        self.burn_g.clear();
+        self.burn_b.clear();
+    }
+
+    pub fn set_pointer(&mut self, nx: f32, ny: f32, down: bool) {
+        self.pointer_x = nx.clamp(0.0, 1.0);
+        self.pointer_y = ny.clamp(0.0, 1.0);
+        self.pointer_down = down;
+    }
+
+    pub fn ensure_burn(&mut self, len: usize) {
+        if self.burn_r.len() != len {
+            self.burn_r = vec![0.0; len];
+            self.burn_g = vec![0.0; len];
+            self.burn_b = vec![0.0; len];
+        }
     }
 
     /// Store composited RGB for temporal looks on the **next** frame.

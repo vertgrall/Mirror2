@@ -36,36 +36,6 @@ macro_rules! still_for {
     }};
 }
 
-fn base_off_rgb() -> (u32, u32, &'static [u8]) {
-    static BASE: OnceLock<(u32, u32, Vec<u8>)> = OnceLock::new();
-    let (w, h, rgb) = BASE.get_or_init(|| {
-        let still = decode(include_bytes!("../assets/fx/off.jpg"));
-        let mut rgb = Vec::with_capacity((still.width * still.height * 3) as usize);
-        for chunk in still.rgba.chunks_exact(4) {
-            rgb.push(chunk[0]);
-            rgb.push(chunk[1]);
-            rgb.push(chunk[2]);
-        }
-        (still.width, still.height, rgb)
-    });
-    (*w, *h, rgb.as_slice())
-}
-
-macro_rules! render_still_for {
-    ($look:expr) => {{
-        static SLOT: OnceLock<Still> = OnceLock::new();
-        SLOT.get_or_init(|| {
-            let (w, h, rgb) = base_off_rgb();
-            let rgba = mirror_vfx::render_still_rgba($look, rgb, w, h);
-            Still {
-                width: w,
-                height: h,
-                rgba: rgba.into(),
-            }
-        })
-    }};
-}
-
 pub fn for_look(look: Look) -> &'static Still {
     match look {
         Look::None => still_for!(Look::None, "../assets/fx/off.jpg"),
@@ -83,29 +53,34 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Breathe => still_for!(Look::Breathe, "../assets/fx/breathe.jpg"),
         Look::Film => still_for!(Look::Film, "../assets/fx/film.jpg"),
         Look::Waves => still_for!(Look::Waves, "../assets/fx/waves.jpg"),
-
-        Look::Thermal => render_still_for!(Look::Thermal),
-        Look::Xray => render_still_for!(Look::Xray),
-        Look::Cyber => render_still_for!(Look::Cyber),
-        Look::Noir => render_still_for!(Look::Noir),
-        Look::Glitch => render_still_for!(Look::Glitch),
-        Look::Mosh => render_still_for!(Look::Mosh),
-        Look::Holo => render_still_for!(Look::Holo),
-        Look::Particles => render_still_for!(Look::Particles),
-        Look::Stamp => render_still_for!(Look::Stamp),
-        Look::Drift => render_still_for!(Look::Drift),
-        Look::Echo => render_still_for!(Look::Echo),
-        Look::Chrome => render_still_for!(Look::Chrome),
-        Look::Bounce => render_still_for!(Look::Bounce),
-        Look::Prism => render_still_for!(Look::Prism),
-        Look::Slitscan => render_still_for!(Look::Slitscan),
-        Look::Reaction => render_still_for!(Look::Reaction),
-        Look::Fluid => render_still_for!(Look::Fluid),
-        Look::Strata => render_still_for!(Look::Strata),
-        Look::Datamosh => render_still_for!(Look::Datamosh),
-        Look::Voronoi => render_still_for!(Look::Voronoi),
-        Look::Topo => render_still_for!(Look::Topo),
-        Look::Quantum => render_still_for!(Look::Quantum),
+        Look::Thermal => still_for!(Look::Thermal, "../assets/fx/thermal.jpg"),
+        Look::Xray => still_for!(Look::Xray, "../assets/fx/xray.jpg"),
+        Look::Cyber => still_for!(Look::Cyber, "../assets/fx/cyber.jpg"),
+        Look::Noir => still_for!(Look::Noir, "../assets/fx/noir.jpg"),
+        Look::Glitch => still_for!(Look::Glitch, "../assets/fx/glitch.jpg"),
+        Look::Mosh => still_for!(Look::Mosh, "../assets/fx/mosh.jpg"),
+        Look::Holo => still_for!(Look::Holo, "../assets/fx/holo.jpg"),
+        Look::Particles => still_for!(Look::Particles, "../assets/fx/particles.jpg"),
+        Look::Stamp => still_for!(Look::Stamp, "../assets/fx/stamp.jpg"),
+        Look::Drift => still_for!(Look::Drift, "../assets/fx/drift.jpg"),
+        Look::Echo => still_for!(Look::Echo, "../assets/fx/echo.jpg"),
+        Look::Chrome => still_for!(Look::Chrome, "../assets/fx/chrome.jpg"),
+        Look::Bounce => still_for!(Look::Bounce, "../assets/fx/bounce.jpg"),
+        Look::Prism => still_for!(Look::Prism, "../assets/fx/prism.jpg"),
+        Look::Slitscan => still_for!(Look::Slitscan, "../assets/fx/slitscan.jpg"),
+        Look::Reaction => still_for!(Look::Reaction, "../assets/fx/reaction.jpg"),
+        Look::Fluid => still_for!(Look::Fluid, "../assets/fx/fluid.jpg"),
+        Look::Strata => still_for!(Look::Strata, "../assets/fx/strata.jpg"),
+        Look::Datamosh => still_for!(Look::Datamosh, "../assets/fx/datamosh.jpg"),
+        Look::Voronoi => still_for!(Look::Voronoi, "../assets/fx/voronoi.jpg"),
+        Look::Topo => still_for!(Look::Topo, "../assets/fx/topo.jpg"),
+        Look::Quantum => still_for!(Look::Quantum, "../assets/fx/quantum.jpg"),
+        Look::Smudge => still_for!(Look::Smudge, "../assets/fx/smudge.jpg"),
+        Look::Lurk => still_for!(Look::Lurk, "../assets/fx/lurk.jpg"),
+        Look::Corrupt => still_for!(Look::Corrupt, "../assets/fx/corrupt.jpg"),
+        Look::Specter => still_for!(Look::Specter, "../assets/fx/specter.jpg"),
+        Look::Possess => still_for!(Look::Possess, "../assets/fx/possess.jpg"),
+        Look::Crawl => still_for!(Look::Crawl, "../assets/fx/crawl.jpg"),
     }
 }
 

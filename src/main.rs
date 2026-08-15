@@ -26,7 +26,7 @@ use async_io::Timer;
 use freya::prelude::*;
 
 use camera::CameraStatus;
-use effects::{atmo_param_defs, set_atmosphere, set_params, AtmosphereParams, Look, LookParams, ParamDef};
+use effects::{atmo_param_defs, pointer_down, set_atmosphere, set_params, set_pointer, AtmosphereParams, Look, LookParams, ParamDef};
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
@@ -243,7 +243,7 @@ fn app() -> Element {
                 .spacing(theme::GAP)
                 .padding(Gaps::new(theme::GAP, 0., 0., 0.))
                 .child(header(palette, &status, ui_theme))
-                .child(stage_well(palette, current_look, seq))
+                .child(stage_well(palette, current_look, seq, controls_rev))
                 .child(shutter_button(
                     palette,
                     shutter,
@@ -721,11 +721,56 @@ fn wear_look(
     apply_controls(defaults, controls_rev);
 }
 
-fn stage_well(palette: Palette, look: Look, seq: u64) -> Element {
+fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) -> Element {
+    let interactive = look.uses_pointer();
+    let mut rev = controls_rev;
+
+    let map_pointer = |local_x: f32, local_y: f32| {
+        stage::map_well_to_frame_uv(
+            local_x,
+            local_y,
+            theme::VIEWFINDER_W,
+            theme::VIEWFINDER_H,
+        )
+    };
+
+    let on_pointer_down = move |e: Event<PointerEventData>| {
+        if !e.data().is_primary() || !interactive {
+            return;
+        }
+        let (nx, ny) = map_pointer(e.element_location().x as f32, e.element_location().y as f32);
+        set_pointer(nx, ny, true);
+        camera::refresh_preview();
+        rev.set(rev() + 1);
+        e.stop_propagation();
+    };
+
+    let on_mouse_move = move |e: Event<MouseEventData>| {
+        if !interactive || !pointer_down() {
+            return;
+        }
+        let (nx, ny) = map_pointer(e.element_location.x as f32, e.element_location.y as f32);
+        set_pointer(nx, ny, true);
+        camera::refresh_preview();
+        rev.set(rev() + 1);
+    };
+
+    let on_global_pointer_press = move |e: Event<PointerEventData>| {
+        if pointer_down() {
+            set_pointer(0.5, 0.5, false);
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+            e.stop_propagation();
+        }
+    };
+
     rect()
         .width(Size::px(theme::VIEWFINDER_W))
         .height(Size::px(theme::VIEWFINDER_H))
         .background(palette.surface)
+        .on_pointer_down(on_pointer_down)
+        .on_mouse_move(on_mouse_move)
+        .on_global_pointer_press(on_global_pointer_press)
         .child(
             canvas(RenderCallback::new({
                 move |ctx| {

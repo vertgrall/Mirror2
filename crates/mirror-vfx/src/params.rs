@@ -854,6 +854,132 @@ impl Look {
                     default: 0.65,
                 },
             ],
+            Look::Smudge => &[
+                WET,
+                ParamDef {
+                    label: "radius",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "drag",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.75,
+                },
+                ParamDef {
+                    label: "bleed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
+            Look::Lurk => &[
+                WET,
+                ParamDef {
+                    label: "ghosts",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "drift",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "fade",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+            ],
+            Look::Corrupt => &[
+                WET,
+                ParamDef {
+                    label: "tear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "blocks",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "chaos",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+            ],
+            Look::Specter => &[
+                WET,
+                ParamDef {
+                    label: "ghosts",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.70,
+                },
+                ParamDef {
+                    label: "hue",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "shear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.40,
+                },
+            ],
+            Look::Possess => &[
+                WET,
+                ParamDef {
+                    label: "radius",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+                ParamDef {
+                    label: "decay",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+                ParamDef {
+                    label: "glow",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+            ],
+            Look::Crawl => &[
+                WET,
+                ParamDef {
+                    label: "swarm",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "speed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+                ParamDef {
+                    label: "static",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.60,
+                },
+            ],
         }
     }
 }

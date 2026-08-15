@@ -6,6 +6,8 @@ mod bounce;
 mod breathe;
 mod cctv;
 mod chrome;
+mod corrupt;
+mod crawl;
 mod cyber;
 mod d8;
 mod datamosh;
@@ -17,6 +19,7 @@ mod glitch;
 mod gx;
 mod holo;
 mod live;
+mod lurk;
 mod morph;
 mod mosh;
 mod noir;
@@ -24,6 +27,7 @@ mod ops;
 mod osd;
 mod params;
 mod particles;
+mod possess;
 mod prism;
 mod quantum;
 mod reaction;
@@ -31,6 +35,8 @@ mod ripple;
 mod sat;
 mod slitscan;
 mod smear;
+mod smudge;
+mod specter;
 mod stamp;
 mod state;
 mod strata;
@@ -64,6 +70,20 @@ pub fn reset_temporal() {
     if let Ok(mut state) = vfx_state().lock() {
         state.clear_temporal();
     }
+}
+
+/// Pointer in normalized frame space (0–1). Call from the viewfinder on drag.
+pub fn set_pointer(nx: f32, ny: f32, down: bool) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.set_pointer(nx, ny, down);
+    }
+}
+
+pub fn pointer_down() -> bool {
+    vfx_state()
+        .lock()
+        .map(|s| s.pointer_down)
+        .unwrap_or(false)
 }
 
 /// High-level VFX processing engine instance for standalone library consumers.
@@ -152,10 +172,16 @@ pub enum Look {
     Voronoi,
     Topo,
     Quantum,
+    Smudge,
+    Lurk,
+    Corrupt,
+    Specter,
+    Possess,
+    Crawl,
 }
 
 impl Look {
-    pub const RAIL: [Self; 37] = [
+    pub const RAIL: [Self; 43] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -193,6 +219,12 @@ impl Look {
         Self::Voronoi,
         Self::Topo,
         Self::Quantum,
+        Self::Smudge,
+        Self::Lurk,
+        Self::Corrupt,
+        Self::Specter,
+        Self::Possess,
+        Self::Crawl,
     ];
 
     pub fn id(self) -> u8 {
@@ -234,6 +266,12 @@ impl Look {
             Self::Voronoi => 34,
             Self::Topo => 35,
             Self::Quantum => 36,
+            Self::Smudge => 37,
+            Self::Lurk => 38,
+            Self::Corrupt => 39,
+            Self::Specter => 40,
+            Self::Possess => 41,
+            Self::Crawl => 42,
         }
     }
 
@@ -275,6 +313,12 @@ impl Look {
             34 => Self::Voronoi,
             35 => Self::Topo,
             36 => Self::Quantum,
+            37 => Self::Smudge,
+            38 => Self::Lurk,
+            39 => Self::Corrupt,
+            40 => Self::Specter,
+            41 => Self::Possess,
+            42 => Self::Crawl,
             _ => Self::None,
         }
     }
@@ -318,6 +362,12 @@ impl Look {
             Self::Voronoi => "VORONOI",
             Self::Topo => "TOPO",
             Self::Quantum => "QUANTUM",
+            Self::Smudge => "SMUDGE",
+            Self::Lurk => "LURK",
+            Self::Corrupt => "CORRUPT",
+            Self::Specter => "SPECTER",
+            Self::Possess => "POSSESS",
+            Self::Crawl => "CRAWL",
         }
     }
 
@@ -343,23 +393,29 @@ impl Look {
             Self::Cyber => "Trinitron CRT · shadow mask & phosphor bleed",
             Self::Noir => "40s Tri-X monochrome · crushed blacks & silver grain",
             Self::Glitch => "analog sync tear · horizontal line displacement",
-            Self::Mosh => "datamosh compression · motion vector macroblocks",
+            Self::Mosh => "VHS macroblock bleed · analog tape drag",
             Self::Holo => "cyberpunk laser grid · holographic scanlines",
             Self::Particles => "pixel dust dispersal · floating particle swirl",
             Self::Stamp => "3-second snapshot PIPs smeared into viewport corners",
             Self::Drift => "slow undulating random LFO waveform distortion",
-            Self::Echo => "temporal feedback infinity mirror tunnel loop",
+            Self::Echo => "infinity mirror · recursive light tunnel",
             Self::Chrome => "super fast random coordinate metallic glinting",
             Self::Bounce => "bouncing frame fragments cut from live feed",
             Self::Prism => "triadic RGB spectral refraction & glass flare",
             Self::Slitscan => "space-time slice depth remapping history ring",
             Self::Reaction => "Turing Gray-Scott reaction-diffusion morphogenesis",
             Self::Fluid => "Eulerian optical flow vector grid & liquid dye solver",
-            Self::Strata => "recursive homography feedback infinity mirror tunnel",
-            Self::Datamosh => "macroblock motion vector smearing & P-frame bleed",
+            Self::Strata => "geological strata · depth parallax layers",
+            Self::Datamosh => "H.264 P-frame smear · digital codec tear",
             Self::Voronoi => "dynamic Delaunay / Voronoi mosaic glass shatter",
             Self::Topo => "2.5D scanline heightmap topographic landscape",
             Self::Quantum => "2D spatial phase wave holographic light interference",
+            Self::Smudge => "drag mouse to smear and bleed color · finger painting",
+            Self::Lurk => "ghost copies of the subject drift at the edge of vision",
+            Self::Corrupt => "brutal block corruption · channel swap · digital death",
+            Self::Specter => "hue-shifted ghost doubles shear like séance double exposure",
+            Self::Possess => "drag mouse to burn afterimages · colors haunt where you touch",
+            Self::Crawl => "analog static entities crawl across the subject like possessed snow",
         }
     }
 
@@ -386,24 +442,34 @@ impl Look {
             Self::Cyber => "Trinitron · CRT",
             Self::Noir => "crushed · silver",
             Self::Glitch => "sync tear · shear",
-            Self::Mosh => "datamosh · vector",
+            Self::Mosh => "tape · macroblock",
             Self::Holo => "laser · hologram",
             Self::Particles => "pixel dust · swirl",
             Self::Stamp => "snapshot · corners",
             Self::Drift => "slow lfo · wave",
-            Self::Echo => "feedback · tunnel",
+            Self::Echo => "mirror · tunnel",
             Self::Chrome => "rapid · chrome",
             Self::Bounce => "bouncing · clones",
             Self::Prism => "refract · prism",
             Self::Slitscan => "time slice · depth",
             Self::Reaction => "Turing · morphogenesis",
             Self::Fluid => "optical flow · liquid",
-            Self::Strata => "homography · feedback",
-            Self::Datamosh => "macroblock · mosh",
+            Self::Strata => "sediment · layers",
+            Self::Datamosh => "codec · smear",
             Self::Voronoi => "Delaunay · mosaic",
             Self::Topo => "heightmap · contour",
             Self::Quantum => "holographic · phase",
+            Self::Smudge => "drag · smear",
+            Self::Lurk => "ghost · drift",
+            Self::Corrupt => "block · chaos",
+            Self::Specter => "hue · séance",
+            Self::Possess => "burn · haunt",
+            Self::Crawl => "static · swarm",
         }
+    }
+
+    pub fn uses_pointer(self) -> bool {
+        matches!(self, Self::Smudge | Self::Possess)
     }
 
     pub fn is_none(self) -> bool {
@@ -449,6 +515,12 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     let wet = look_params.wet();
     let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
         ops::rgb_to_rgba(rgb, w, h)
+    } else if matches!(look, Look::Possess) {
+        let mut looked = possess::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
     } else {
         let mut looked = apply_look(look, rgb, w, h, &state, &look_params);
         // Morph keeps the photo visible — lines slider lives inside the look.
@@ -510,6 +582,12 @@ fn apply_look(
         Look::Voronoi => voronoi::apply(rgb, w, h, state, params),
         Look::Topo => topo::apply(rgb, w, h, state, params),
         Look::Quantum => quantum::apply(rgb, w, h, state, params),
+        Look::Smudge => smudge::apply(rgb, w, h, state, params),
+        Look::Lurk => lurk::apply(rgb, w, h, state, params),
+        Look::Corrupt => corrupt::apply(rgb, w, h, state, params),
+        Look::Specter => specter::apply(rgb, w, h, state, params),
+        Look::Possess => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
+        Look::Crawl => crawl::apply(rgb, w, h, state, params),
     }
 }
 
@@ -775,7 +853,7 @@ pub mod tests {
         assert_eq!(Look::from_id(0), Look::None);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 37);
+        assert_eq!(Look::RAIL.len(), 43);
     }
 
     #[test]
