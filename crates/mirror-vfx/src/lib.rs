@@ -16,10 +16,13 @@ mod echo;
 mod family;
 mod film;
 mod fluid;
+mod fracture;
 mod glitch;
 mod gx;
 mod haunt;
 mod holo;
+mod jam;
+mod kodak;
 mod live;
 mod lurk;
 mod morph;
@@ -29,11 +32,13 @@ mod ops;
 mod osd;
 mod params;
 mod particles;
+mod polar;
 mod possess;
 mod prism;
 mod quantum;
 mod reaction;
 mod ripple;
+mod rupture;
 mod sat;
 mod slitscan;
 mod smear;
@@ -41,12 +46,19 @@ mod smudge;
 mod specter;
 mod stamp;
 mod state;
+mod stick;
 mod strata;
+mod super8;
 mod thermal;
 mod topo;
 mod uhf;
 mod vhs;
 mod voronoi;
+mod bomen;
+mod communion;
+mod gilt;
+mod phasedance;
+mod tuber;
 mod waves;
 mod xray;
 
@@ -89,6 +101,60 @@ pub fn pointer_down() -> bool {
         .unwrap_or(false)
 }
 
+pub fn begin_selection(nx: f32, ny: f32) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.begin_selection(nx, ny);
+    }
+}
+
+pub fn update_selection(nx: f32, ny: f32) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.update_selection(nx, ny);
+    }
+}
+
+pub fn finish_selection() {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.finish_selection();
+    }
+}
+
+pub fn reset_interactive() {
+    reset_temporal();
+}
+
+pub fn bomen_pointer_down(nx: f32, ny: f32) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.bomen_pointer_down(nx, ny);
+    }
+}
+
+pub fn bomen_pointer_move(nx: f32, ny: f32) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.bomen_pointer_move(nx, ny);
+    }
+}
+
+pub fn bomen_pointer_up(nx: f32, ny: f32) {
+    if let Ok(mut state) = vfx_state().lock() {
+        state.bomen_pointer_up(nx, ny);
+    }
+}
+
+pub fn bomen_placing() -> bool {
+    vfx_state()
+        .lock()
+        .map(|s| s.bomen_placing)
+        .unwrap_or(false)
+}
+
+pub fn bomen_pointer_active() -> bool {
+    vfx_state()
+        .lock()
+        .map(|s| s.bomen_down_active)
+        .unwrap_or(false)
+}
+
 /// High-level VFX processing engine instance for standalone library consumers.
 #[derive(Default)]
 pub struct VfxEngine {
@@ -121,6 +187,12 @@ impl VfxEngine {
         let wet = look_params.wet();
         let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
             ops::rgb_to_rgba(rgb, w, h)
+        } else if matches!(look, Look::Bomen) {
+            let mut looked = bomen::apply(rgb, w, h, &mut self.state, look_params);
+            if wet < 0.99 {
+                ops::mix_look_over_rgb(&mut looked, rgb, wet);
+            }
+            looked
         } else {
             let mut looked = apply_look(look, rgb, w, h, &self.state, look_params);
             if wet < 0.99 && !matches!(look, Look::Morph) {
@@ -182,10 +254,22 @@ pub enum Look {
     Possess,
     Crawl,
     Haunt,
+    Stick,
+    Fracture,
+    Rupture,
+    Jam,
+    Polar,
+    Kodak,
+    Super8,
+    Bomen,
+    Communion,
+    PhaseDance,
+    TuberCool,
+    Gilt,
 }
 
 impl Look {
-    pub const RAIL: [Self; 44] = [
+    pub const RAIL: [Self; 56] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -230,6 +314,18 @@ impl Look {
         Self::Possess,
         Self::Crawl,
         Self::Haunt,
+        Self::Stick,
+        Self::Fracture,
+        Self::Rupture,
+        Self::Jam,
+        Self::Polar,
+        Self::Kodak,
+        Self::Super8,
+        Self::Bomen,
+        Self::Communion,
+        Self::PhaseDance,
+        Self::TuberCool,
+        Self::Gilt,
     ];
 
     pub fn id(self) -> u8 {
@@ -278,6 +374,18 @@ impl Look {
             Self::Possess => 41,
             Self::Crawl => 42,
             Self::Haunt => 43,
+            Self::Stick => 44,
+            Self::Fracture => 45,
+            Self::Rupture => 46,
+            Self::Jam => 47,
+            Self::Polar => 48,
+            Self::Kodak => 49,
+            Self::Super8 => 50,
+            Self::Bomen => 51,
+            Self::Communion => 52,
+            Self::PhaseDance => 53,
+            Self::TuberCool => 54,
+            Self::Gilt => 55,
         }
     }
 
@@ -326,6 +434,18 @@ impl Look {
             41 => Self::Possess,
             42 => Self::Crawl,
             43 => Self::Haunt,
+            44 => Self::Stick,
+            45 => Self::Fracture,
+            46 => Self::Rupture,
+            47 => Self::Jam,
+            48 => Self::Polar,
+            49 => Self::Kodak,
+            50 => Self::Super8,
+            51 => Self::Bomen,
+            52 => Self::Communion,
+            53 => Self::PhaseDance,
+            54 => Self::TuberCool,
+            55 => Self::Gilt,
             _ => Self::None,
         }
     }
@@ -376,6 +496,18 @@ impl Look {
             Self::Possess => "POSSESS",
             Self::Crawl => "CRAWL",
             Self::Haunt => "HAUNT",
+            Self::Stick => "STICK",
+            Self::Fracture => "FRACTURE",
+            Self::Rupture => "RUPTURE",
+            Self::Jam => "JAM",
+            Self::Polar => "POLAR",
+            Self::Kodak => "KODAK",
+            Self::Super8 => "SUPER8",
+            Self::Bomen => "B-OMEN",
+            Self::Communion => "COMMUNION",
+            Self::PhaseDance => "PHASE",
+            Self::TuberCool => "TUBER",
+            Self::Gilt => "GILT",
         }
     }
 
@@ -425,6 +557,18 @@ impl Look {
             Self::Possess => "drag mouse to burn afterimages · colors haunt where you touch",
             Self::Crawl => "analog static entities crawl across the subject like possessed snow",
             Self::Haunt => "hero · drag to smear · ghosts lurk · afterimages burn in",
+            Self::Stick => "drag paint · strokes stay until Reset",
+            Self::Fracture => "marquee a region · tile · mirror · kaleidoscope",
+            Self::Rupture => "marquee a region · glitch burst inside selection",
+            Self::Jam => "VHS head-switch jam · vertical bands · freeze rows",
+            Self::Polar => "1970s instant film · white frame · cyan shadows",
+            Self::Kodak => "Kodachrome slide · golden highlights · saturated red",
+            Self::Super8 => "8mm home movie · gate jitter · warm flicker grain",
+            Self::Bomen => "magic wand · tap copies that spot · reach · drag omen",
+            Self::Communion => "wand · copies · spread · size",
+            Self::PhaseDance => "slow invert waves · glitch leaking underneath",
+            Self::TuberCool => "tap a spot · drag a stretch · up to four · reset",
+            Self::Gilt => "kintsugi · live cracks fill with gold leaf",
         }
     }
 
@@ -475,11 +619,44 @@ impl Look {
             Self::Possess => "burn · haunt",
             Self::Crawl => "static · swarm",
             Self::Haunt => "smear · lurk · burn",
+            Self::Stick => "drag · stays",
+            Self::Fracture => "marquee · tile",
+            Self::Rupture => "marquee · glitch",
+            Self::Jam => "VHS · jam",
+            Self::Polar => "instant · 70s",
+            Self::Kodak => "chrome · slide",
+            Self::Super8 => "8mm · home",
+            Self::Bomen => "wand · omen",
+            Self::Communion => "wand · copies",
+            Self::PhaseDance => "invert · wave",
+            Self::TuberCool => "tap · stretch",
+            Self::Gilt => "gold · crack",
         }
     }
 
     pub fn uses_pointer(self) -> bool {
-        matches!(self, Self::Smudge | Self::Possess | Self::Haunt)
+        matches!(
+            self,
+            Self::Smudge
+                | Self::Possess
+                | Self::Haunt
+                | Self::Stick
+                | Self::Bomen
+                | Self::Communion
+                | Self::TuberCool
+        )
+    }
+
+    pub fn uses_bomen(self) -> bool {
+        matches!(self, Self::Bomen)
+    }
+
+    pub fn uses_selection(self) -> bool {
+        matches!(self, Self::Fracture | Self::Rupture)
+    }
+
+    pub fn needs_reset(self) -> bool {
+        self.uses_pointer() || self.uses_selection() || self.uses_bomen()
     }
 
     pub fn is_none(self) -> bool {
@@ -518,6 +695,15 @@ pub fn render_still_rgba(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
 
 /// RGB (mirrored) → RGBA through full pipeline.
 pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
+    apply_inner(look, rgb, w, h, false)
+}
+
+/// Same as [`apply`], for shutter stills — keeps interactive marks, hides preview guides.
+pub fn apply_export(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
+    apply_inner(look, rgb, w, h, true)
+}
+
+fn apply_inner(look: Look, rgb: &[u8], w: u32, h: u32, exporting: bool) -> Vec<u8> {
     let n = (w as usize) * (h as usize);
     assert_eq!(rgb.len(), n * 3);
 
@@ -528,6 +714,7 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
         return ops::rgb_to_rgba(rgb, w, h);
     };
     state.advance(w, h, look.id());
+    state.exporting = exporting;
     state.push_ring(rgb, 45);
 
     let wet = look_params.wet();
@@ -557,6 +744,30 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
             ops::mix_look_over_rgb(&mut looked, rgb, wet);
         }
         looked
+    } else if matches!(look, Look::Stick) {
+        let mut looked = stick::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
+    } else if matches!(look, Look::Bomen) {
+        let mut looked = bomen::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
+    } else if matches!(look, Look::Communion) {
+        let mut looked = communion::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
+    } else if matches!(look, Look::TuberCool) {
+        let mut looked = tuber::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
     } else {
         let mut looked = apply_look(look, rgb, w, h, &state, &look_params);
         // Morph keeps the photo visible — lines slider lives inside the look.
@@ -569,6 +780,7 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
         looked
     };
     state.commit_rgb(rgb);
+    state.exporting = false;
     atmo::apply(&rgba, w, h, &state, &atmo_params)
 }
 
@@ -625,6 +837,18 @@ fn apply_look(
         Look::Possess => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
         Look::Crawl => crawl::apply(rgb, w, h, state, params),
         Look::Haunt => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
+        Look::Stick => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
+        Look::Fracture => fracture::apply(rgb, w, h, state, params),
+        Look::Rupture => rupture::apply(rgb, w, h, state, params),
+        Look::Jam => jam::apply(rgb, w, h, state, params),
+        Look::Polar => polar::apply(rgb, w, h, state, params),
+        Look::Kodak => kodak::apply(rgb, w, h, state, params),
+        Look::Super8 => super8::apply(rgb, w, h, state, params),
+        Look::Bomen => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
+        Look::Communion => ops::rgb_to_rgba(rgb, w, h),
+        Look::PhaseDance => phasedance::apply(rgb, w, h, state, params),
+        Look::TuberCool => ops::rgb_to_rgba(rgb, w, h),
+        Look::Gilt => gilt::apply(rgb, w, h, state, params),
     }
 }
 
@@ -752,6 +976,78 @@ pub mod tests {
             v[i * 3 + 2] = 160;
         }
         v
+    }
+
+    #[test]
+    fn bomen_tap_marks_region() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        set_atmo(AtmosphereParams::default());
+        set_params(LookParams::defaults(Look::Bomen));
+        let w = 64u32;
+        let h = 48u32;
+        let mut rgb = vec![10u8; (w * h * 3) as usize];
+        for y in 16..32 {
+            for x in 20..44 {
+                let i = ((y * w + x) * 3) as usize;
+                rgb[i] = 200;
+                rgb[i + 1] = 200;
+                rgb[i + 2] = 200;
+            }
+        }
+        set_pointer(0.5, 0.5, true);
+        let out = apply(Look::Bomen, &rgb, w, h);
+        let flat = ops::rgb_to_rgba(&rgb, w, h);
+        assert_ne!(out, flat, "B-OMEN press should tint the marked region");
+        set_pointer(0.5, 0.5, false);
+        set_pointer(0.85, 0.25, true);
+        let retap = apply(Look::Bomen, &rgb, w, h);
+        assert_ne!(retap, out, "a new tap should sample a new wand region");
+        set_pointer(0.85, 0.25, false);
+        let parked = apply(Look::Bomen, &rgb, w, h);
+        assert_ne!(parked, flat, "B-OMEN omen should stay after release");
+    }
+
+    #[test]
+    fn bomen_export_keeps_omen_at_full_res() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        reset_temporal();
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Bomen));
+        let mut small = vec![10u8; 64 * 48 * 3];
+        for y in 16..32 {
+            for x in 20..44 {
+                let i = (y * 64 + x) * 3;
+                small[i] = 200;
+                small[i + 1] = 200;
+                small[i + 2] = 200;
+            }
+        }
+        set_pointer(0.5, 0.5, true);
+        let _ = apply(Look::Bomen, &small, 64, 48);
+        set_pointer(0.75, 0.35, true);
+        let _ = apply(Look::Bomen, &small, 64, 48);
+        set_pointer(0.75, 0.35, false);
+        let _ = apply(Look::Bomen, &small, 64, 48);
+
+        let mut big = vec![10u8; 128 * 96 * 3];
+        for y in 32..64 {
+            for x in 40..88 {
+                let i = (y * 128 + x) * 3;
+                big[i] = 200;
+                big[i + 1] = 200;
+                big[i + 2] = 200;
+            }
+        }
+        let keep = apply_export(Look::Bomen, &big, 128, 96);
+        let dry = ops::rgb_to_rgba(&big, 128, 96);
+        assert_ne!(
+            keep, dry,
+            "shutter still must include the B-OMEN copy at full resolution"
+        );
     }
 
     #[test]
@@ -890,7 +1186,7 @@ pub mod tests {
         assert_eq!(Look::from_id(0), Look::None);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 44);
+        assert_eq!(Look::RAIL.len(), 56);
     }
 
     #[test]

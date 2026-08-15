@@ -235,12 +235,20 @@ pub fn draw_thumb(ctx: &mut CanvasContext, width: u32, height: u32, rgba: &[u8])
 }
 
 /// Map viewfinder-local coords to normalized frame UV (cover-crop inverse).
-pub fn map_well_to_frame_uv(local_x: f32, local_y: f32, well_w: f32, well_h: f32) -> (f32, f32) {
-    let frame_w = well_w;
-    let frame_h = well_h;
+/// `frame_w` / `frame_h` must be the live preview buffer, not the well.
+pub fn map_well_to_frame_uv(
+    local_x: f32,
+    local_y: f32,
+    well_w: f32,
+    well_h: f32,
+    frame_w: f32,
+    frame_h: f32,
+) -> (f32, f32) {
+    let frame_w = frame_w.max(1.0);
+    let frame_h = frame_h.max(1.0);
     let scale = (well_w / frame_w).max(well_h / frame_h);
-    let dw = frame_w * scale;
-    let dh = frame_h * scale;
+    let dw = (frame_w * scale).max(1.0);
+    let dh = (frame_h * scale).max(1.0);
     let dx = (well_w - dw) * 0.5;
     let dy = (well_h - dh) * 0.5;
     let nx = ((local_x - dx) / dw).clamp(0.0, 1.0);

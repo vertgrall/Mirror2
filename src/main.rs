@@ -27,7 +27,11 @@ use freya::components::{Checkbox, Tile};
 use freya::prelude::*;
 
 use camera::CameraStatus;
-use effects::{atmo_param_defs, pointer_down, set_atmosphere, set_params, set_pointer, AtmosphereParams, Look, LookFamily, LookParams, ParamDef};
+use effects::{
+    atmo_param_defs, begin_selection, finish_selection, pointer_down, reset_interactive,
+    set_atmosphere, set_params, set_pointer, update_selection, AtmosphereParams, Look, LookFamily,
+    LookParams, ParamDef,
+};
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
@@ -503,75 +507,104 @@ fn fx_tab_bar(
     palette: Palette,
     look: Look,
     tab: FxTab,
-    mut fx_tab: State<FxTab>,
-    page: usize,
+    fx_tab: State<FxTab>,
+    _page: usize,
     family: LookFamily,
-    mut dock_family: State<LookFamily>,
-    mut dock_page: State<usize>,
+    dock_family: State<LookFamily>,
+    dock_page: State<usize>,
 ) -> Element {
-    let rail = family.rail();
-    let start = dock_start(page, family);
-    let end = (start + theme::DOCK_VISIBLE).min(rail.len());
-    let count = format!("{}–{} of {}", start + 1, end, rail.len());
-
-    let chips = family_rail(palette, family, dock_family, dock_page);
+    let subtitle = if tab == FxTab::Look {
+        format!("{} · {}", look.label(), look.tile_line())
+    } else {
+        "global smoke haze".into()
+    };
 
     rect()
-        .horizontal()
+        .vertical()
         .width(Size::px(theme::WINDOW_W))
-        .main_align(Alignment::SpaceBetween)
-        .cross_align(Alignment::Center)
+        .spacing(4.)
         .child(
             rect()
                 .horizontal()
-                .spacing(4.)
+                .width(Size::px(theme::WINDOW_W))
+                .height(Size::px(theme::FX_TAB_ROW_H))
                 .cross_align(Alignment::Center)
+                .spacing(theme::GAP)
                 .child(gutter())
-                .child(fx_tab_chip(
-                    palette,
-                    "LOOK",
-                    tab == FxTab::Look,
-                    {
-                        let mut tab_state = fx_tab;
-                        move |_| tab_state.set(FxTab::Look)
-                    },
-                ))
-                .child(fx_tab_chip(
-                    palette,
-                    "ATMO",
-                    tab == FxTab::Atmo,
-                    {
-                        let mut tab_state = fx_tab;
-                        move |_| tab_state.set(FxTab::Atmo)
-                    },
-                ))
-                .child(gutter())
+                .child(fx_tab_switch(palette, tab, fx_tab))
                 .child(
                     label()
-                        .text(if tab == FxTab::Look {
-                            format!("{}  ·  {}", look.label(), look.tile_line())
-                        } else {
-                            "smoke haze  ·  global atmosphere".into()
-                        })
+                        .text(truncate_chars(&subtitle, 34))
                         .font_size(theme::FONT_SMALL)
                         .font_weight(FontWeight::BOLD)
-                        .color(palette.text),
-                ),
+                        .color(palette.text_dim)
+                        .width(Size::fill()),
+                )
+                .child(gutter()),
         )
-        .child(
+        .child(family_rail(
+            palette,
+            family,
+            dock_family,
+            dock_page,
+        ))
+        .into()
+}
+
+fn truncate_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    text.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+}
+
+fn fx_tab_switch(palette: Palette, tab: FxTab, mut fx_tab: State<FxTab>) -> Element {
+    let mut row = rect()
+        .horizontal()
+        .height(Size::px(theme::FX_TAB_ROW_H))
+        .background(palette.control)
+        .border(theme::border_all(palette.stroke_soft))
+        .cross_align(Alignment::Center);
+
+    let tabs = [(FxTab::Look, "LOOK"), (FxTab::Atmo, "ATMO")];
+    for (i, &(t, tab_label)) in tabs.iter().enumerate() {
+        let selected = tab == t;
+        let mut tab_state = fx_tab;
+        row = row.child(
             rect()
-                .horizontal()
-                .spacing(6.)
+                .width(Size::px(44.))
+                .height(Size::px(theme::FX_TAB_ROW_H))
+                .main_align(Alignment::Center)
                 .cross_align(Alignment::Center)
-                .child(chips)
+                .background(if selected {
+                    palette.accent
+                } else {
+                    Color::TRANSPARENT
+                })
+                .on_press(move |_| tab_state.set(t))
                 .child(
                     label()
-                        .text(count)
-                        .font_size(theme::FONT_SMALL)
-                        .color(palette.muted),
+                        .text(tab_label)
+                        .font_size(10.)
+                        .font_weight(FontWeight::BOLD)
+                        .color(if selected {
+                            palette.on_accent
+                        } else {
+                            palette.text_dim
+                        }),
                 ),
-        )
-        .into()
+        );
+        if i + 1 < tabs.len() {
+            row = row.child(
+                rect()
+                    .width(Size::px(1.))
+                    .height(Size::px(theme::FX_TAB_ROW_H - 6.))
+                    .background(palette.stroke_soft),
+            );
+        }
+    }
+
+    row.into()
 }
 
 fn family_rail(
@@ -583,10 +616,11 @@ fn family_rail(
     let all = LookFamily::ALL;
     let mut row = rect()
         .horizontal()
-        .cross_align(Alignment::Center)
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(theme::FAMILY_RAIL_H))
         .background(palette.control)
         .border(theme::border_all(palette.stroke_soft))
-        .overflow(Overflow::Clip);
+        .cross_align(Alignment::Center);
 
     for (i, &fam) in all.iter().enumerate() {
         let selected = fam == active;
@@ -595,7 +629,10 @@ fn family_rail(
         let mut page_state = dock_page;
         row = row.child(
             rect()
-                .padding(Gaps::new(5., 11., 5., 11.))
+                .width(Size::px(theme::FAMILY_SEG_W))
+                .height(Size::px(theme::FAMILY_RAIL_H))
+                .main_align(Alignment::Center)
+                .cross_align(Alignment::Center)
                 .background(if selected {
                     palette.accent
                 } else {
@@ -623,7 +660,7 @@ fn family_rail(
             row = row.child(
                 rect()
                     .width(Size::px(1.))
-                    .height(Size::px(20.))
+                    .height(Size::px(theme::FAMILY_RAIL_H - 6.))
                     .background(palette.stroke_soft),
             );
         }
@@ -672,39 +709,6 @@ fn bypass_control(palette: Palette, bypass_countdown: State<bool>) -> Element {
         .into()
 }
 
-fn fx_tab_chip(
-    palette: Palette,
-    text: &'static str,
-    selected: bool,
-    on_press: impl FnMut(Event<MouseEventData>) + 'static,
-) -> Element {
-    rect()
-        .padding(Gaps::new(3., 8., 3., 8.))
-        .background(if selected {
-            palette.fill_hi
-        } else {
-            palette.fill
-        })
-        .border(theme::border_all(if selected {
-            palette.accent
-        } else {
-            palette.stroke_soft
-        }))
-        .on_mouse_up(on_press)
-        .child(
-            label()
-                .text(text)
-                .font_size(10.)
-                .font_weight(FontWeight::BOLD)
-                .color(if selected {
-                    palette.accent
-                } else {
-                    palette.text
-                }),
-        )
-        .into()
-}
-
 fn look_fx_body(
     palette: Palette,
     look: Look,
@@ -716,6 +720,10 @@ fn look_fx_body(
 
     let mut col = rect().vertical().width(Size::fill()).spacing(3.);
 
+    if look.needs_reset() {
+        col = col.child(reset_fx_button(palette, controls_rev));
+    }
+
     for (index, def) in defs.iter().enumerate() {
         col = col.child(kit_slider(palette, *def, values.values[index], {
             let mut param_state = params;
@@ -724,6 +732,39 @@ fn look_fx_body(
         }));
     }
     col.into()
+}
+
+fn reset_fx_button(palette: Palette, controls_rev: State<u32>) -> Element {
+    let mut rev = controls_rev;
+    rect()
+        .horizontal()
+        .width(Size::px(theme::WINDOW_W))
+        .height(Size::px(22.))
+        .main_align(Alignment::End)
+        .cross_align(Alignment::Center)
+        .child(gutter())
+        .child(
+            rect()
+                .padding(Gaps::new(4., 12., 4., 12.))
+                .background(palette.fill)
+                .border(theme::border_all(palette.stroke_soft))
+                .on_press(move |_| {
+                    reset_interactive();
+                    set_pointer(0.5, 0.5, false);
+                    camera::refresh_preview();
+                    rev.set(rev() + 1);
+                    request_redraw();
+                })
+                .child(
+                    label()
+                        .text("reset")
+                        .font_size(10.)
+                        .font_weight(FontWeight::BOLD)
+                        .color(palette.text_dim),
+                ),
+        )
+        .child(gutter())
+        .into()
 }
 
 fn look_dock(
@@ -934,62 +975,85 @@ fn wear_look(
 }
 
 fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) -> Element {
-    let interactive = look.uses_pointer();
+    let brush = look.uses_pointer();
+    let selection = look.uses_selection();
     let mut rev = controls_rev;
 
     let map_pointer = |local_x: f32, local_y: f32| {
+        let (fw, fh) = camera::preview_size();
         stage::map_well_to_frame_uv(
             local_x,
             local_y,
             theme::VIEWFINDER_W,
             theme::VIEWFINDER_H,
+            fw as f32,
+            fh as f32,
         )
     };
 
     let on_pointer_down = move |e: Event<PointerEventData>| {
-        if !e.data().is_primary() || !interactive {
+        if !e.data().is_primary() || (!brush && !selection) {
             return;
         }
         let (nx, ny) = map_pointer(e.element_location().x as f32, e.element_location().y as f32);
-        set_pointer(nx, ny, true);
+        if selection {
+            begin_selection(nx, ny);
+        } else {
+            set_pointer(nx, ny, true);
+        }
         camera::refresh_preview();
         rev.set(rev() + 1);
         e.stop_propagation();
     };
 
     let on_mouse_down = move |e: Event<MouseEventData>| {
-        if !interactive {
+        if !brush && !selection {
             return;
         }
         let (nx, ny) = map_pointer(e.element_location.x as f32, e.element_location.y as f32);
-        set_pointer(nx, ny, true);
+        if selection {
+            begin_selection(nx, ny);
+        } else {
+            set_pointer(nx, ny, true);
+        }
         camera::refresh_preview();
         rev.set(rev() + 1);
         e.stop_propagation();
     };
 
     let on_mouse_move = move |e: Event<MouseEventData>| {
-        if !interactive || !pointer_down() {
-            return;
-        }
         let (nx, ny) = map_pointer(e.element_location.x as f32, e.element_location.y as f32);
-        set_pointer(nx, ny, true);
-        camera::refresh_preview();
-        rev.set(rev() + 1);
+        if selection {
+            update_selection(nx, ny);
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+        } else if brush && pointer_down() {
+            set_pointer(nx, ny, true);
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+        }
     };
 
     let on_global_pointer_move = move |e: Event<PointerEventData>| {
-        if !interactive || !pointer_down() {
-            return;
-        }
         let (nx, ny) = map_pointer(e.element_location().x as f32, e.element_location().y as f32);
-        set_pointer(nx, ny, true);
-        camera::refresh_preview();
-        rev.set(rev() + 1);
+        if selection {
+            update_selection(nx, ny);
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+        } else if brush && pointer_down() {
+            set_pointer(nx, ny, true);
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+        }
     };
 
     let on_global_pointer_press = move |_e: Event<PointerEventData>| {
-        if pointer_down() {
+        if selection {
+            finish_selection();
+            camera::refresh_preview();
+            rev.set(rev() + 1);
+        }
+        if brush && pointer_down() {
             set_pointer(0.5, 0.5, false);
             camera::refresh_preview();
             rev.set(rev() + 1);
@@ -1000,6 +1064,9 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
         .width(Size::px(theme::VIEWFINDER_W))
         .height(Size::px(theme::VIEWFINDER_H))
         .background(palette.surface)
+        .on_pointer_down(on_pointer_down)
+        .on_mouse_down(on_mouse_down)
+        .on_mouse_move(on_mouse_move)
         .on_global_pointer_move(on_global_pointer_move)
         .on_global_pointer_press(on_global_pointer_press)
         .child(
@@ -1018,9 +1085,6 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
             }))
             .width(Size::fill())
             .height(Size::fill())
-            .on_pointer_down(on_pointer_down)
-            .on_mouse_down(on_mouse_down)
-            .on_mouse_move(on_mouse_move)
             .key(seq),
         )
         .into()

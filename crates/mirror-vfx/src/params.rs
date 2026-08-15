@@ -1021,6 +1021,270 @@ impl Look {
                     default: 0.68,
                 },
             ],
+            Look::Stick => &[
+                WET,
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "drag",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.72,
+                },
+                ParamDef {
+                    label: "edge",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.35,
+                },
+            ],
+            Look::Fracture => &[
+                WET,
+                ParamDef {
+                    label: "tiles",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.58,
+                },
+                ParamDef {
+                    label: "mirror",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "spin",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.42,
+                },
+            ],
+            Look::Rupture => &[
+                WET,
+                ParamDef {
+                    label: "shear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "blocks",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "chaos",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+            ],
+            Look::Jam => &[
+                WET,
+                ParamDef {
+                    label: "jam",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "bands",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "freeze",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.38,
+                },
+            ],
+            Look::Polar => &[
+                WET,
+                ParamDef {
+                    label: "fade",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.58,
+                },
+                ParamDef {
+                    label: "warm",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.52,
+                },
+                ParamDef {
+                    label: "frame",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.72,
+                },
+            ],
+            Look::Kodak => &[
+                WET,
+                ParamDef {
+                    label: "chrome",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.68,
+                },
+                ParamDef {
+                    label: "red",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "grain",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
+            Look::Super8 => &[
+                WET,
+                ParamDef {
+                    label: "gate",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.58,
+                },
+                ParamDef {
+                    label: "warm",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.65,
+                },
+                ParamDef {
+                    label: "flicker",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.42,
+                },
+            ],
+            Look::Bomen => &[
+                WET,
+                ParamDef {
+                    label: "reach",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.42,
+                },
+                ParamDef {
+                    label: "match",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+                ParamDef {
+                    label: "pulse",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "echo",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.58,
+                },
+                ParamDef {
+                    label: "drift",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+            ],
+            Look::Communion => &[
+                WET,
+                ParamDef {
+                    label: "copies",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "spread",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.50,
+                },
+            ],
+            Look::PhaseDance => &[
+                WET,
+                ParamDef {
+                    label: "invert",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.72,
+                },
+                ParamDef {
+                    label: "warp",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.58,
+                },
+                ParamDef {
+                    label: "glitch",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.42,
+                },
+            ],
+            Look::TuberCool => &[
+                WET,
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+                ParamDef {
+                    label: "pull",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.70,
+                },
+                ParamDef {
+                    label: "hold",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 1.0,
+                },
+            ],
+            Look::Gilt => &[
+                WET,
+                ParamDef {
+                    label: "cracks",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "gold",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.78,
+                },
+                ParamDef {
+                    label: "flow",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.45,
+                },
+            ],
         }
     }
 }

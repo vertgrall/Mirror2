@@ -46,11 +46,15 @@ impl Look {
         match self {
             Look::None => LookFamily::Tape,
             Look::Vhs | Look::Gx | Look::Uhf | Look::Beta | Look::D8 | Look::Live | Look::Sat
-            | Look::Mosh | Look::Glitch | Look::Datamosh => LookFamily::Tape,
+            | Look::Mosh | Look::Glitch | Look::Datamosh | Look::Jam | Look::Super8 => {
+                LookFamily::Tape
+            }
             Look::Cctv | Look::Thermal | Look::Xray | Look::Noir | Look::Cyber
-            | Look::Slitscan => LookFamily::Eye,
+            | Look::Slitscan | Look::Gilt => LookFamily::Eye,
             Look::Ripple | Look::Smear | Look::Breathe | Look::Film | Look::Waves | Look::Fluid
-            | Look::Drift | Look::Reaction => LookFamily::Water,
+            | Look::Drift | Look::Reaction | Look::Polar | Look::Kodak | Look::PhaseDance => {
+                LookFamily::Water
+            }
             _ => LookFamily::Weird,
         }
     }
@@ -64,7 +68,7 @@ impl Look {
     }
 }
 
-const TAPE_RAIL: [Look; 11] = [
+const TAPE_RAIL: [Look; 13] = [
     Look::None,
     Look::Vhs,
     Look::Gx,
@@ -76,9 +80,11 @@ const TAPE_RAIL: [Look; 11] = [
     Look::Mosh,
     Look::Glitch,
     Look::Datamosh,
+    Look::Jam,
+    Look::Super8,
 ];
 
-const EYE_RAIL: [Look; 7] = [
+const EYE_RAIL: [Look; 8] = [
     Look::None,
     Look::Cctv,
     Look::Thermal,
@@ -86,26 +92,36 @@ const EYE_RAIL: [Look; 7] = [
     Look::Noir,
     Look::Cyber,
     Look::Slitscan,
+    Look::Gilt,
 ];
 
-const WATER_RAIL: [Look; 9] = [
+const WATER_RAIL: [Look; 12] = [
     Look::None,
     Look::Ripple,
     Look::Smear,
     Look::Breathe,
     Look::Film,
     Look::Waves,
+    Look::Polar,
+    Look::Kodak,
     Look::Fluid,
     Look::Drift,
     Look::Reaction,
+    Look::PhaseDance,
 ];
 
-const WEIRD_RAIL: [Look; 20] = [
+const WEIRD_RAIL: [Look; 26] = [
     Look::None,
     Look::Morph,
     Look::Haunt,
+    Look::Stick,
     Look::Smudge,
     Look::Possess,
+    Look::Fracture,
+    Look::Rupture,
+    Look::Bomen,
+    Look::Communion,
+    Look::TuberCool,
     Look::Lurk,
     Look::Corrupt,
     Look::Specter,

@@ -82,6 +82,18 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Possess => still_for!(Look::Possess, "../assets/fx/possess.jpg"),
         Look::Crawl => still_for!(Look::Crawl, "../assets/fx/crawl.jpg"),
         Look::Haunt => still_for!(Look::Haunt, "../assets/fx/haunt.jpg"),
+        Look::Stick => still_for!(Look::Stick, "../assets/fx/stick.jpg"),
+        Look::Fracture => still_for!(Look::Fracture, "../assets/fx/fracture.jpg"),
+        Look::Rupture => still_for!(Look::Rupture, "../assets/fx/rupture.jpg"),
+        Look::Jam => still_for!(Look::Jam, "../assets/fx/jam.jpg"),
+        Look::Polar => still_for!(Look::Polar, "../assets/fx/polar.jpg"),
+        Look::Kodak => still_for!(Look::Kodak, "../assets/fx/kodak.jpg"),
+        Look::Super8 => still_for!(Look::Super8, "../assets/fx/super8.jpg"),
+        Look::Bomen => still_for!(Look::Bomen, "../assets/fx/bomen.jpg"),
+        Look::Communion => still_for!(Look::Communion, "../assets/fx/communion.jpg"),
+        Look::PhaseDance => still_for!(Look::PhaseDance, "../assets/fx/phase.jpg"),
+        Look::TuberCool => still_for!(Look::TuberCool, "../assets/fx/tuber.jpg"),
+        Look::Gilt => still_for!(Look::Gilt, "../assets/fx/gilt.jpg"),
     }
 }
 

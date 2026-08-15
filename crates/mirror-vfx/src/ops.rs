@@ -1,5 +1,7 @@
 //! Shared imaging ops — convolutions, sampling, morphology building blocks.
 
+use super::state::VfxState;
+
 pub fn rgb_to_rgba(rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     let n = (w as usize) * (h as usize);
     let mut out = vec![0u8; n * 4];
@@ -178,6 +180,28 @@ pub fn hash2d(x: f32, y: f32) -> f32 {
     let mut n = x.sin() * 43758.5453 + y.cos() * 23421.631;
     n = (n.fract().abs() * 43758.5453).fract();
     n
+}
+
+/// Normalized selection rect (x0, y0, x1, y1) when marquee is active.
+pub fn selection_bounds(state: &VfxState) -> Option<(f32, f32, f32, f32)> {
+    if !state.sel_valid {
+        return None;
+    }
+    Some((
+        state.sel_x0.min(state.sel_x1),
+        state.sel_y0.min(state.sel_y1),
+        state.sel_x0.max(state.sel_x1),
+        state.sel_y0.max(state.sel_y1),
+    ))
+}
+
+pub fn pixel_in_selection(state: &VfxState, x: u32, y: u32, w: u32, h: u32) -> bool {
+    let Some((x0, y0, x1, y1)) = selection_bounds(state) else {
+        return false;
+    };
+    let nx = x as f32 / w as f32;
+    let ny = y as f32 / h as f32;
+    nx >= x0 && nx <= x1 && ny >= y0 && ny <= y1
 }
 
 #[allow(dead_code)]

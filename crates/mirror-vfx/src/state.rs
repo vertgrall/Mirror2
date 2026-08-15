@@ -41,6 +41,40 @@ pub struct VfxState {
     pub burn_b: Vec<f32>,
     /// Random layout seed for BREATHE particle clusters (re-rolled on look entry).
     pub breathe_seed: u32,
+    /// Normalized marquee selection (0–1). Used by FRACTURE / RUPTURE.
+    pub sel_x0: f32,
+    pub sel_y0: f32,
+    pub sel_x1: f32,
+    pub sel_y1: f32,
+    pub sel_valid: bool,
+    pub sel_dragging: bool,
+    /// B-OMEN color select + omen clone placement.
+    pub bomen_mask: Vec<f32>,
+    pub bomen_src_rgb: Vec<u8>,
+    pub bomen_box: [u32; 4],
+    pub bomen_has_source: bool,
+    pub bomen_tap_pending: bool,
+    pub bomen_tap_x: f32,
+    pub bomen_tap_y: f32,
+    pub bomen_clone_x: f32,
+    pub bomen_clone_y: f32,
+    pub bomen_clone_placed: bool,
+    pub bomen_placing: bool,
+    pub bomen_down_active: bool,
+    pub bomen_down_x: f32,
+    pub bomen_down_y: f32,
+    pub bomen_src_w: u32,
+    pub bomen_src_h: u32,
+    /// True while writing a shutter still — hide preview-only guides.
+    pub exporting: bool,
+    /// TUBER stretch strokes (up to 4).
+    pub tuber_n: u8,
+    pub tuber_drag: bool,
+    pub tuber_ax: [f32; 4],
+    pub tuber_ay: [f32; 4],
+    pub tuber_bx: [f32; 4],
+    pub tuber_by: [f32; 4],
+    pub tuber_patch: Vec<u8>,
 }
 
 impl Default for VfxState {
@@ -77,6 +111,36 @@ impl Default for VfxState {
             burn_g: Vec::new(),
             burn_b: Vec::new(),
             breathe_seed: 1,
+            sel_x0: 0.0,
+            sel_y0: 0.0,
+            sel_x1: 0.0,
+            sel_y1: 0.0,
+            sel_valid: false,
+            sel_dragging: false,
+            bomen_mask: Vec::new(),
+            bomen_src_rgb: Vec::new(),
+            bomen_box: [0, 0, 0, 0],
+            bomen_has_source: false,
+            bomen_tap_pending: false,
+            bomen_tap_x: 0.5,
+            bomen_tap_y: 0.5,
+            bomen_clone_x: 0.5,
+            bomen_clone_y: 0.5,
+            bomen_clone_placed: false,
+            bomen_placing: false,
+            bomen_down_active: false,
+            bomen_down_x: 0.5,
+            bomen_down_y: 0.5,
+            bomen_src_w: 0,
+            bomen_src_h: 0,
+            exporting: false,
+            tuber_n: 0,
+            tuber_drag: false,
+            tuber_ax: [0.5; 4],
+            tuber_ay: [0.5; 4],
+            tuber_bx: [0.5; 4],
+            tuber_by: [0.5; 4],
+            tuber_patch: Vec::new(),
         }
     }
 }
@@ -85,6 +149,7 @@ impl VfxState {
     /// Advance time for this frame. Does **not** overwrite history — read that first.
     pub fn advance(&mut self, w: u32, h: u32, look_id: u8) {
         if self.last_w != w || self.last_h != h || self.last_look != look_id {
+            let look_changed = self.last_look != look_id;
             self.frame = 0;
             self.prev_rgb = None;
             self.prev_morph = None;
@@ -109,6 +174,10 @@ impl VfxState {
             self.paint_g.clear();
             self.paint_b.clear();
             self.paint_a.clear();
+            if look_changed {
+                self.clear_bomen();
+                self.clear_tuber();
+            }
             self.breathe_seed = BREATHE_SEED.fetch_add(0x9E37_79B9, Ordering::Relaxed);
         }
         self.frame = self.frame.wrapping_add(1);
@@ -137,6 +206,118 @@ impl VfxState {
         self.paint_g.clear();
         self.paint_b.clear();
         self.paint_a.clear();
+        self.sel_valid = false;
+        self.sel_dragging = false;
+        self.sel_x0 = 0.0;
+        self.sel_y0 = 0.0;
+        self.sel_x1 = 0.0;
+        self.sel_y1 = 0.0;
+        self.clear_bomen();
+        self.clear_tuber();
+    }
+
+    pub fn clear_tuber(&mut self) {
+        self.tuber_n = 0;
+        self.tuber_drag = false;
+    }
+
+    pub fn ensure_tuber(&mut self) {
+        let need = 4 * 48 * 48 * 3;
+        if self.tuber_patch.len() != need {
+            self.tuber_patch = vec![0u8; need];
+        }
+    }
+
+    pub fn clear_bomen(&mut self) {
+        self.bomen_mask.clear();
+        self.bomen_src_rgb.clear();
+        self.bomen_box = [0, 0, 0, 0];
+        self.bomen_has_source = false;
+        self.bomen_tap_pending = false;
+        self.bomen_clone_placed = false;
+        self.bomen_placing = false;
+        self.bomen_down_active = false;
+        self.bomen_src_w = 0;
+        self.bomen_src_h = 0;
+    }
+
+    pub fn ensure_bomen(&mut self, len: usize) {
+        if self.bomen_mask.len() != len {
+            self.bomen_mask = vec![0.0; len];
+            self.bomen_src_rgb = vec![0u8; len * 3];
+        }
+    }
+
+    pub fn bomen_pointer_down(&mut self, nx: f32, ny: f32) {
+        let nx = nx.clamp(0.0, 1.0);
+        let ny = ny.clamp(0.0, 1.0);
+        self.bomen_down_active = true;
+        self.bomen_down_x = nx;
+        self.bomen_down_y = ny;
+        if self.bomen_has_source {
+            self.bomen_placing = true;
+            self.bomen_clone_x = nx;
+            self.bomen_clone_y = ny;
+        }
+    }
+
+    pub fn bomen_pointer_move(&mut self, nx: f32, ny: f32) {
+        if self.bomen_placing {
+            self.bomen_clone_x = nx.clamp(0.0, 1.0);
+            self.bomen_clone_y = ny.clamp(0.0, 1.0);
+        }
+    }
+
+    pub fn bomen_pointer_up(&mut self, nx: f32, ny: f32) {
+        if !self.bomen_down_active {
+            return;
+        }
+        self.bomen_down_active = false;
+        let nx = nx.clamp(0.0, 1.0);
+        let ny = ny.clamp(0.0, 1.0);
+        if self.bomen_placing {
+            self.bomen_placing = false;
+            self.bomen_clone_placed = true;
+            self.bomen_clone_x = nx;
+            self.bomen_clone_y = ny;
+            return;
+        }
+        let dx = (nx - self.bomen_down_x).abs();
+        let dy = (ny - self.bomen_down_y).abs();
+        if dx < 0.025 && dy < 0.025 {
+            self.bomen_tap_pending = true;
+            self.bomen_tap_x = nx;
+            self.bomen_tap_y = ny;
+        }
+    }
+
+    pub fn begin_selection(&mut self, nx: f32, ny: f32) {
+        let nx = nx.clamp(0.0, 1.0);
+        let ny = ny.clamp(0.0, 1.0);
+        self.sel_x0 = nx;
+        self.sel_y0 = ny;
+        self.sel_x1 = nx;
+        self.sel_y1 = ny;
+        self.sel_valid = false;
+        self.sel_dragging = true;
+    }
+
+    pub fn update_selection(&mut self, nx: f32, ny: f32) {
+        if !self.sel_dragging {
+            return;
+        }
+        self.sel_x1 = nx.clamp(0.0, 1.0);
+        self.sel_y1 = ny.clamp(0.0, 1.0);
+    }
+
+    pub fn finish_selection(&mut self) {
+        if !self.sel_dragging {
+            return;
+        }
+        self.sel_dragging = false;
+        let dx = (self.sel_x1 - self.sel_x0).abs();
+        let dy = (self.sel_y1 - self.sel_y0).abs();
+        self.sel_valid = dx > 0.015 || dy > 0.015;
     }
 
     pub fn set_pointer(&mut self, nx: f32, ny: f32, down: bool) {

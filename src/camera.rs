@@ -71,6 +71,15 @@ pub fn refresh_preview() {
     publish(pw, ph, rgba);
 }
 
+/// Preview buffer size for mapping viewfinder taps onto the live frame.
+pub fn preview_size() -> (u32, u32) {
+    frame_lock()
+        .try_lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|f| (f.width, f.height)))
+        .unwrap_or((crate::theme::VIEWFINDER_W as u32, crate::theme::VIEWFINDER_H as u32))
+}
+
 /// Latest preview frame for live view. Non-blocking — returns None if camera holds the lock.
 pub fn current_frame() -> Option<Frame> {
     frame_lock().try_lock().ok()?.clone()
@@ -84,7 +93,7 @@ pub fn snapshot_for_keep() -> Option<Frame> {
         (*w, *h, effects::mirror_rgb(rgb, *w, *h))
     };
     let look = Look::from_id(LOOK.load(Ordering::Relaxed));
-    let rgba = effects::apply(look, &mirrored, w, h);
+    let rgba = effects::apply_export(look, &mirrored, w, h);
     let seq = frame_lock()
         .try_lock()
         .ok()
