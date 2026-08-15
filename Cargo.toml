@@ -6,7 +6,7 @@ members = [
 
 [package]
 name = "mirror2"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Mirror2 by NT — outsider spiritual successor to Photo Booth. No curtains."
 authors = ["Jon McMillion / New Tower"]

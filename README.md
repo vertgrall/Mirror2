@@ -20,7 +20,7 @@ You sit. You pick a look. The camera well is always the preview. You keep a stil
 |:---:|
 | ![dock](docs/screenshots/mirror2-dock-tape.png) |
 
-Dock cards are photoreal still-life specimens. Chevrons page through 15 looks.
+Dock cards are photoreal still-life specimens. Chevrons page through the catalog. Family chips jump rails: **tape · eye · water · weird**.
 
 ```
  MIRROR2                           NEW TOWER
@@ -29,31 +29,29 @@ Dock cards are photoreal still-life specimens. Chevrons page through 15 looks.
  │         (480 × 360, locked)             │
  └─────────────────────────────────────────┘
               ◉ shutter
-         wet · sliders · open folder
+    LOOK / ATMO · wet · sliders · open folder
    <  OFF   VHS   GX   >        chevron dock
+        tape · eye · water · weird
 ```
 
-## Looks (v0.1)
+## Looks (44 in catalog)
 
-| Look | Line | Family |
-|------|------|--------|
-| **OFF** | clean camera | — |
-| **MORPH** | ink drawing | paper |
-| **VHS** | tracking · wear | tape |
-| **GX** | Hi8 · 1994 | tape |
-| **UHF** | antenna · snow | tape |
-| **BETA** | luma · dropout | tape |
-| **D8** | block · digital | tape |
-| **LIVE** | tally · interlace | tape |
-| **SAT** | rain · macro | tape (16:9 letterbox) |
-| **CCTV** | blocky · crushed | eye |
-| **RIPPLE** | water rings | water |
-| **SMEAR** | drag · temperature | optics |
-| **BREATHE** | inhale · exhale | body |
-| **FILM** | sprockets · rebate | material |
-| **WAVES** | sepia · film | material |
+| Family | Examples |
+|--------|----------|
+| **tape** | OFF, VHS, GX, UHF, BETA, D8, LIVE, SAT, MOSH, GLITCH, DATAMOSH |
+| **eye** | CCTV, THERMAL, XRAY, NOIR, CYBER, SLITSCAN |
+| **water** | RIPPLE, SMEAR, BREATHE, FILM, WAVES, FLUID, DRIFT, REACTION |
+| **weird** | MORPH, HAUNT, SMUDGE, POSSESS, LURK, CORRUPT, SPECTER, CRAWL, … |
 
-Dock cards show photoreal still-life specimens. Chevrons page the catalog.
+Hero interactive looks — drag on the camera well:
+
+| Look | Line |
+|------|------|
+| **HAUNT** | smear · ghosts · burn |
+| **SMUDGE** | finger-paint · wet drag |
+| **POSSESS** | burn-in · afterimage |
+
+Recent polish: **BREATHE** (inhale + black particle balls), **FILM** (35mm gate), **REACTION** (Gray-Scott patterns).
 
 ## Run it (macOS)
 
@@ -67,16 +65,24 @@ Quit any old window before relaunching — stale binaries are the usual reason c
 
 **Space** or the shutter: 3 · 2 · 1, flash, then the still saves to `~/Pictures/Mirror2`.
 
+Toggle **bypass 3s** to fire instantly. **ATMO** tab: global smoke haze over any look.
+
 ## Stack
 
 Rust + [Freya](https://freyaui.dev) + AVFoundation (32BGRA). New Tower.
 
 ## Layout
 
-Fixed **480×728** window. Shutter centered on the spine. Layout regression tests in `main.rs` (`layout_stone_nothing_walks_off_the_glass`).
+Fixed **480×808** window. Shutter centered on the spine. Layout regression tests in `main.rs` (`layout_stone_nothing_walks_off_the_glass`).
 
 Regenerate README screenshots:
 
 ```bash
 cargo test export_readme_screenshots
+```
+
+Build release DMG:
+
+```bash
+cargo build --release && ./build_dmg.sh
 ```

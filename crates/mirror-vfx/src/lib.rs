@@ -13,10 +13,12 @@ mod d8;
 mod datamosh;
 mod drift;
 mod echo;
+mod family;
 mod film;
 mod fluid;
 mod glitch;
 mod gx;
+mod haunt;
 mod holo;
 mod live;
 mod lurk;
@@ -52,6 +54,7 @@ mod xray;
 pub use atmo::{
     param_defs as atmo_param_defs, set_params as set_atmosphere, AtmosphereParams,
 };
+pub use family::LookFamily;
 pub use ops::rgb_to_rgba;
 pub use params::{current_params, set_params, LookParams, ParamDef};
 pub use state::VfxState;
@@ -133,7 +136,7 @@ impl VfxEngine {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Look {
     None,
     Morph,
@@ -178,10 +181,11 @@ pub enum Look {
     Specter,
     Possess,
     Crawl,
+    Haunt,
 }
 
 impl Look {
-    pub const RAIL: [Self; 43] = [
+    pub const RAIL: [Self; 44] = [
         Self::None,
         Self::Morph,
         Self::Vhs,
@@ -225,6 +229,7 @@ impl Look {
         Self::Specter,
         Self::Possess,
         Self::Crawl,
+        Self::Haunt,
     ];
 
     pub fn id(self) -> u8 {
@@ -272,6 +277,7 @@ impl Look {
             Self::Specter => 40,
             Self::Possess => 41,
             Self::Crawl => 42,
+            Self::Haunt => 43,
         }
     }
 
@@ -319,6 +325,7 @@ impl Look {
             40 => Self::Specter,
             41 => Self::Possess,
             42 => Self::Crawl,
+            43 => Self::Haunt,
             _ => Self::None,
         }
     }
@@ -368,6 +375,7 @@ impl Look {
             Self::Specter => "SPECTER",
             Self::Possess => "POSSESS",
             Self::Crawl => "CRAWL",
+            Self::Haunt => "HAUNT",
         }
     }
 
@@ -385,7 +393,7 @@ impl Look {
             Self::Cctv => "blocky green-grey · crushed",
             Self::Ripple => "water rings · VHS cam through a puddle",
             Self::Smear => "color drag · warm or cold trail · slow shutter",
-            Self::Breathe => "inhale · exhale · whole frame scales",
+            Self::Breathe => "inhale · exhale · black particle balls",
             Self::Film => "35mm inset · sprockets · grain",
             Self::Waves => "sepia print · gate ripples · silver grain",
             Self::Thermal => "FLIR heat vision · ironbow & rainbow gradients",
@@ -416,6 +424,7 @@ impl Look {
             Self::Specter => "hue-shifted ghost doubles shear like séance double exposure",
             Self::Possess => "drag mouse to burn afterimages · colors haunt where you touch",
             Self::Crawl => "analog static entities crawl across the subject like possessed snow",
+            Self::Haunt => "hero · drag to smear · ghosts lurk · afterimages burn in",
         }
     }
 
@@ -465,11 +474,12 @@ impl Look {
             Self::Specter => "hue · séance",
             Self::Possess => "burn · haunt",
             Self::Crawl => "static · swarm",
+            Self::Haunt => "smear · lurk · burn",
         }
     }
 
     pub fn uses_pointer(self) -> bool {
-        matches!(self, Self::Smudge | Self::Possess)
+        matches!(self, Self::Smudge | Self::Possess | Self::Haunt)
     }
 
     pub fn is_none(self) -> bool {
@@ -488,11 +498,19 @@ pub fn render_still_rgba(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
         return ops::rgb_to_rgba(rgb, w, h);
     }
 
-    // Warm up state history across multiple iterations
-    for _ in 0..10 {
+    // Warm up temporal state — reaction-diffusion needs many steps.
+    let warmup = if look == Look::Reaction { 64 } else { 10 };
+    for _ in 0..warmup {
         state.advance(w, h, look.id());
         state.push_ring(rgb, 45);
+        if look == Look::Reaction {
+            let _ = reaction::apply(rgb, w, h, &mut state, &params);
+        }
         state.commit_rgb(rgb);
+    }
+
+    if look == Look::Reaction {
+        return reaction::apply(rgb, w, h, &mut state, &params);
     }
 
     apply_look(look, rgb, w, h, &state, &params)
@@ -515,6 +533,24 @@ pub fn apply(look: Look, rgb: &[u8], w: u32, h: u32) -> Vec<u8> {
     let wet = look_params.wet();
     let rgba = if look.is_none() || (wet < 0.01 && !matches!(look, Look::Morph)) {
         ops::rgb_to_rgba(rgb, w, h)
+    } else if matches!(look, Look::Reaction) {
+        let mut looked = reaction::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
+    } else if matches!(look, Look::Haunt) {
+        let mut looked = haunt::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
+    } else if matches!(look, Look::Smudge) {
+        let mut looked = smudge::apply(rgb, w, h, &mut state, &look_params);
+        if wet < 0.99 {
+            ops::mix_look_over_rgb(&mut looked, rgb, wet);
+        }
+        looked
     } else if matches!(look, Look::Possess) {
         let mut looked = possess::apply(rgb, w, h, &mut state, &look_params);
         if wet < 0.99 {
@@ -575,19 +611,20 @@ fn apply_look(
         Look::Bounce => bounce::apply(rgb, w, h, state, params),
         Look::Prism => prism::apply(rgb, w, h, state, params),
         Look::Slitscan => slitscan::apply(rgb, w, h, state, params),
-        Look::Reaction => reaction::apply(rgb, w, h, state, params),
+        Look::Reaction => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
         Look::Fluid => fluid::apply(rgb, w, h, state, params),
         Look::Strata => strata::apply(rgb, w, h, state, params),
         Look::Datamosh => datamosh::apply(rgb, w, h, state, params),
         Look::Voronoi => voronoi::apply(rgb, w, h, state, params),
         Look::Topo => topo::apply(rgb, w, h, state, params),
         Look::Quantum => quantum::apply(rgb, w, h, state, params),
-        Look::Smudge => smudge::apply(rgb, w, h, state, params),
+        Look::Smudge => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
         Look::Lurk => lurk::apply(rgb, w, h, state, params),
         Look::Corrupt => corrupt::apply(rgb, w, h, state, params),
         Look::Specter => specter::apply(rgb, w, h, state, params),
         Look::Possess => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
         Look::Crawl => crawl::apply(rgb, w, h, state, params),
+        Look::Haunt => ops::rgb_to_rgba(rgb, w, h), // handled in apply() with mut state
     }
 }
 
@@ -853,7 +890,7 @@ pub mod tests {
         assert_eq!(Look::from_id(0), Look::None);
         assert!(AtmosphereParams::default().smoke < 0.01);
         assert!(Look::None.param_defs().is_empty());
-        assert_eq!(Look::RAIL.len(), 43);
+        assert_eq!(Look::RAIL.len(), 44);
     }
 
     #[test]
@@ -866,7 +903,184 @@ pub mod tests {
         set_params(LookParams::defaults(Look::Film));
         let rgb = vec![200u8; 640 * 480 * 3];
         let out = apply(Look::Film, &rgb, 640, 480);
-        assert!(out[0] > 100, "outer shell should be styled, got {}", out[0]);
+        let center = out[(240 * 640 + 320) * 4];
+        assert!(center > 100, "picture area should be styled, got {center}");
+    }
+
+    #[test]
+    fn film_rebate_darkens_edges() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Film));
+        let rgb = vec![210u8; 320 * 240 * 3];
+        let out = apply(Look::Film, &rgb, 320, 240);
+        let corner = out[0];
+        let center = out[(120 * 320 + 160) * 4];
+        assert!(
+            corner < center.saturating_sub(25),
+            "rebate corner {corner} should be darker than center {center}"
+        );
+    }
+
+    #[test]
+    fn breathe_pulses_over_frames() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let params = LookParams::defaults(Look::Breathe);
+        let mut rgb = vec![0u8; 64 * 48 * 3];
+        for y in 0..48 {
+            for x in 0..64 {
+                let i = (y * 64 + x) * 3;
+                rgb[i] = (x * 4) as u8;
+                rgb[i + 1] = (y * 4) as u8;
+                rgb[i + 2] = 128;
+            }
+        }
+        let mut state = VfxState::default();
+        state.advance(64, 48, Look::Breathe.id());
+        let inhale = breathe::apply(&rgb, 64, 48, &state, &params);
+        state.frame = 25;
+        let exhale = breathe::apply(&rgb, 64, 48, &state, &params);
+        assert_ne!(
+            &inhale[..64],
+            &exhale[..64],
+            "breathe should change pixels between inhale and exhale phases"
+        );
+    }
+
+    #[test]
+    fn breathe_particles_darken_with_size() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let rgb = vec![220u8; 64 * 48 * 3];
+        let mut state = VfxState::default();
+        state.advance(64, 48, Look::Breathe.id());
+        state.frame = 10;
+
+        let mut off = LookParams::defaults(Look::Breathe);
+        off.values[4] = 0.0;
+        let no_balls = breathe::apply(&rgb, 64, 48, &state, &off);
+
+        let mut on = LookParams::defaults(Look::Breathe);
+        on.values[4] = 1.0;
+        on.values[5] = 0.6;
+        on.values[6] = 0.8;
+        let with_balls = breathe::apply(&rgb, 64, 48, &state, &on);
+
+        let dark = |buf: &[u8]| buf.chunks(4).filter(|px| px[0] < 40).count();
+        assert!(
+            dark(&with_balls) > dark(&no_balls),
+            "size should add black particle balls"
+        );
+        assert_ne!(no_balls, with_balls);
+    }
+
+    #[test]
+    fn breathe_high_speed_does_not_panic() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let rgb = vec![180u8; 128 * 96 * 3];
+        let mut state = VfxState::default();
+        state.advance(128, 96, Look::Breathe.id());
+        state.frame = 50_000;
+
+        let mut p = LookParams::defaults(Look::Breathe);
+        p.values[4] = 1.0;
+        p.values[5] = 1.0;
+        p.values[6] = 1.0;
+        let out = breathe::apply(&rgb, 128, 96, &state, &p);
+        assert_eq!(out.len(), 128 * 96 * 4);
+    }
+
+    #[test]
+    fn breathe_spread_widens_particle_field() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let rgb = vec![200u8; 96 * 96 * 3];
+        let mut state = VfxState::default();
+        state.advance(96, 96, Look::Breathe.id());
+        state.frame = 7;
+
+        let mut tight = LookParams::defaults(Look::Breathe);
+        tight.values[4] = 0.85;
+        tight.values[5] = 0.2;
+        tight.values[6] = 0.0;
+
+        let mut wide = LookParams::defaults(Look::Breathe);
+        wide.values[4] = 0.85;
+        wide.values[5] = 0.2;
+        wide.values[6] = 1.0;
+
+        let tight_out = breathe::apply(&rgb, 96, 96, &state, &tight);
+        let wide_out = breathe::apply(&rgb, 96, 96, &state, &wide);
+        assert_ne!(tight_out, wide_out, "spread should push balls apart");
+
+        let tight_span = particle_span(&tight_out, 96, 96);
+        let wide_span = particle_span(&wide_out, 96, 96);
+        assert!(
+            wide_span > tight_span * 1.4,
+            "wide spread should cover more of the frame (tight={tight_span:.1}, wide={wide_span:.1})"
+        );
+    }
+
+    fn particle_span(rgba: &[u8], w: u32, h: u32) -> f32 {
+        let mut min_x = w;
+        let mut max_x = 0u32;
+        let mut min_y = h;
+        let mut max_y = 0u32;
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if rgba[i] < 40 {
+                    min_x = min_x.min(x);
+                    max_x = max_x.max(x);
+                    min_y = min_y.min(y);
+                    max_y = max_y.max(y);
+                }
+            }
+        }
+        if max_x <= min_x {
+            return 0.0;
+        }
+        let dx = (max_x - min_x) as f32;
+        let dy = (max_y - min_y) as f32;
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    #[test]
+    fn reaction_builds_visible_pattern() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        set_atmo(AtmosphereParams {
+            smoke: 0.0,
+            ..Default::default()
+        });
+        set_params(LookParams::defaults(Look::Reaction));
+        let mut rgb = vec![20u8; 128 * 96 * 3];
+        for y in 30..66 {
+            for x in 40..88 {
+                let i = (y * 128 + x) * 3;
+                rgb[i] = 220;
+                rgb[i + 1] = 200;
+                rgb[i + 2] = 180;
+            }
+        }
+        let flat = ops::rgb_to_rgba(&rgb, 128, 96);
+        let mut out = flat.clone();
+        for _ in 0..24 {
+            out = apply(Look::Reaction, &rgb, 128, 96);
+        }
+        let diff: u32 = flat
+            .chunks(4)
+            .zip(out.chunks(4))
+            .map(|(a, b)| {
+                (a[0] as i32 - b[0] as i32).unsigned_abs()
+                    + (a[1] as i32 - b[1] as i32).unsigned_abs()
+                    + (a[2] as i32 - b[2] as i32).unsigned_abs()
+            })
+            .sum();
+        assert!(
+            diff > 40_000,
+            "reaction should produce a strong visible pattern, diff={diff}"
+        );
     }
 
     #[test]

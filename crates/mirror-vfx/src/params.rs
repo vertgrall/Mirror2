@@ -1,7 +1,7 @@
 //! Per-look slider definitions and runtime values.
 //!
-//! Slot 0 is always **wet** (0 = dry camera, 1 = full look).
-//! Slots 1–3 are named for what that look actually does.
+//! Most looks use slot 0 as **wet** (0 = dry camera, 1 = full look) plus three knobs.
+//! A few looks (e.g. BREATHE) expose up to [`MAX_LOOK_PARAMS`] sliders.
 
 use std::sync::{Mutex, OnceLock};
 
@@ -15,9 +15,11 @@ pub struct ParamDef {
     pub default: f32,
 }
 
+pub const MAX_LOOK_PARAMS: usize = 7;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LookParams {
-    pub values: [f32; 4],
+    pub values: [f32; MAX_LOOK_PARAMS],
 }
 
 static PARAMS: OnceLock<Mutex<LookParams>> = OnceLock::new();
@@ -41,8 +43,8 @@ pub fn current_params() -> LookParams {
 
 impl LookParams {
     pub fn defaults(look: Look) -> Self {
-        let mut values = [0.0; 4];
-        for (i, def) in look.param_defs().iter().enumerate() {
+        let mut values = [0.0; MAX_LOOK_PARAMS];
+        for (i, def) in look.param_defs().iter().enumerate().take(MAX_LOOK_PARAMS) {
             values[i] = def.default;
         }
         Self { values }
@@ -335,19 +337,37 @@ impl Look {
                     label: "depth",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.55,
+                    default: 0.72,
                 },
                 ParamDef {
                     label: "pace",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.45,
+                    default: 0.52,
                 },
                 ParamDef {
                     label: "hold",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.35,
+                    default: 0.22,
+                },
+                ParamDef {
+                    label: "size",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.48,
+                },
+                ParamDef {
+                    label: "speed",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.55,
+                },
+                ParamDef {
+                    label: "spread",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.42,
                 },
             ],
             Look::Film => &[
@@ -356,7 +376,7 @@ impl Look {
                     label: "grain",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.55,
+                    default: 0.68,
                 },
                 ParamDef {
                     label: "warm",
@@ -368,7 +388,7 @@ impl Look {
                     label: "frame",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.72,
+                    default: 0.78,
                 },
             ],
             Look::Waves => &[
@@ -713,19 +733,19 @@ impl Look {
                     label: "feed",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.50,
+                    default: 0.58,
                 },
                 ParamDef {
                     label: "kill",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.50,
+                    default: 0.52,
                 },
                 ParamDef {
                     label: "luma",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.65,
+                    default: 0.78,
                 },
             ],
             Look::Fluid => &[
@@ -860,19 +880,19 @@ impl Look {
                     label: "radius",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.55,
+                    default: 0.68,
                 },
                 ParamDef {
                     label: "drag",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.75,
+                    default: 0.88,
                 },
                 ParamDef {
                     label: "bleed",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.45,
+                    default: 0.35,
                 },
             ],
             Look::Lurk => &[
@@ -944,19 +964,19 @@ impl Look {
                     label: "radius",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.50,
+                    default: 0.62,
                 },
                 ParamDef {
                     label: "decay",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.35,
+                    default: 0.22,
                 },
                 ParamDef {
                     label: "glow",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.55,
+                    default: 0.72,
                 },
             ],
             Look::Crawl => &[
@@ -965,19 +985,40 @@ impl Look {
                     label: "swarm",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.55,
+                    default: 0.72,
                 },
                 ParamDef {
                     label: "speed",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.45,
+                    default: 0.58,
                 },
                 ParamDef {
                     label: "static",
                     min: 0.0,
                     max: 1.0,
-                    default: 0.60,
+                    default: 0.75,
+                },
+            ],
+            Look::Haunt => &[
+                WET,
+                ParamDef {
+                    label: "smear",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.78,
+                },
+                ParamDef {
+                    label: "ghosts",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.62,
+                },
+                ParamDef {
+                    label: "burn",
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.68,
                 },
             ],
         }

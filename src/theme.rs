@@ -6,9 +6,9 @@ use freya::prelude::{Border, BorderWidth, Color};
 pub const VIEWFINDER_W: f32 = 480.;
 pub const VIEWFINDER_H: f32 = 360.;
 pub const WINDOW_W: f32 = VIEWFINDER_W;
-/// header 20 + well 360 + shutter 56 + fx band 176 + dock 88 + 4×8 gaps + 8 top
-pub const WINDOW_H: f32 = 740.;
-pub const FX_BAND_H: f32 = 176.;
+/// header 20 + well 360 + shutter 56 + fx band 244 + dock 88 + 4×8 gaps + 8 top
+pub const WINDOW_H: f32 = 808.;
+pub const FX_BAND_H: f32 = 244.;
 pub const HEADER_H: f32 = 20.;
 pub const SHUTTER_D: f32 = 56.;
 /// Equal walls so the button sits on x = 240. Never flex — Freya flex is 100% parent.

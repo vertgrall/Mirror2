@@ -23,16 +23,23 @@ mod vfx;
 use std::time::{Duration, Instant};
 
 use async_io::Timer;
+use freya::components::{Checkbox, Tile};
 use freya::prelude::*;
 
 use camera::CameraStatus;
-use effects::{atmo_param_defs, pointer_down, set_atmosphere, set_params, set_pointer, AtmosphereParams, Look, LookParams, ParamDef};
+use effects::{atmo_param_defs, pointer_down, set_atmosphere, set_params, set_pointer, AtmosphereParams, Look, LookFamily, LookParams, ParamDef};
 use keep::KeepShot;
 use shutter::Shutter;
 use stage::{draw_stage, draw_thumb, StageFrame};
 use theme::{Palette, Theme};
 
 const ICON: &[u8] = include_bytes!("../resources/icon-window.png");
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FxTab {
+    Look,
+    Atmo,
+}
 
 pub fn is_debug() -> bool {
     static DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -54,6 +61,8 @@ macro_rules! debug_log {
 fn main() {
     debug_log!("starting Mirror2 v{}", env!("CARGO_PKG_VERSION"));
     about_assets::preload();
+    let d = AtmosphereParams::default();
+    sync_atmosphere([d.smoke, d.density, d.drift, d.scale]);
     launch(
         LaunchConfig::new()
             .with_future(|proxy| async move {
@@ -97,8 +106,10 @@ fn app() -> Element {
     let palette = ui_theme().palette();
     let look = use_state(|| Look::None);
     let mut dock_page = use_state(|| 0usize);
+    let mut dock_family = use_state(|| LookFamily::Tape);
     let params = use_state(|| LookParams::defaults(Look::None));
-    let _atmo_values = use_state(|| {
+    let fx_tab = use_state(|| FxTab::Look);
+    let atmo_values = use_state(|| {
         let d = AtmosphereParams::default();
         [d.smoke, d.density, d.drift, d.scale]
     });
@@ -211,6 +222,7 @@ fn app() -> Element {
     let current_look = look();
     let current_params = params();
     let page = dock_page();
+    let family = dock_family();
     let _keeps_now = keeps.read().clone();
     let err = keep_error.read().clone();
 
@@ -220,14 +232,15 @@ fn app() -> Element {
         .height(Size::fill())
         .background(palette.bg)
         .on_global_key_down(move |e: Event<KeyboardEventData>| {
+            let family = dock_family();
             if shutter::is_arrow_left(&e.key, e.code) {
                 e.stop_propagation();
-                step_dock(&mut dock_page, -1);
+                step_dock(&mut dock_page, -1, family);
                 return;
             }
             if shutter::is_arrow_right(&e.key, e.code) {
                 e.stop_propagation();
-                step_dock(&mut dock_page, 1);
+                step_dock(&mut dock_page, 1, family);
                 return;
             }
             if shutter::is_space(&e.key, e.code) {
@@ -260,7 +273,12 @@ fn app() -> Element {
                     current_params,
                     params,
                     controls_rev,
+                    fx_tab,
+                    atmo_values,
                     page,
+                    family,
+                    dock_family,
+                    dock_page,
                     err,
                 ))
                 .child(look_dock(
@@ -269,27 +287,35 @@ fn app() -> Element {
                     params,
                     controls_rev,
                     dock_page,
+                    dock_family,
                     current_look,
                     page,
+                    family,
                 )),
         )
         .into()
 }
 
-fn dock_max() -> usize {
-    Look::RAIL.len().saturating_sub(theme::DOCK_VISIBLE)
+fn dock_max(family: LookFamily) -> usize {
+    family.rail().len().saturating_sub(theme::DOCK_VISIBLE)
 }
 
-fn dock_start(page: usize) -> usize {
-    page.min(dock_max())
+fn dock_start(page: usize, family: LookFamily) -> usize {
+    page.min(dock_max(family))
 }
 
-fn step_dock(page: &mut State<usize>, delta: i32) {
-    let start = dock_start(*page.peek());
-    let next = (start as i32 + delta).clamp(0, dock_max() as i32) as usize;
+fn step_dock(page: &mut State<usize>, delta: i32, family: LookFamily) {
+    let start = dock_start(*page.peek(), family);
+    let next = (start as i32 + delta).clamp(0, dock_max(family) as i32) as usize;
     if next != start {
         *page.write() = next;
     }
+}
+
+fn dock_page_for_look(look: Look, family: LookFamily) -> usize {
+    look.index_in_family()
+        .saturating_sub(1)
+        .min(dock_max(family))
 }
 
 fn start_countdown(mut shutter: State<Shutter>) {
@@ -439,24 +465,36 @@ fn fx_band_panel(
     values: LookParams,
     params: State<LookParams>,
     controls_rev: State<u32>,
+    fx_tab: State<FxTab>,
+    atmo_values: State<[f32; 4]>,
     page: usize,
+    family: LookFamily,
+    mut dock_family: State<LookFamily>,
+    mut dock_page: State<usize>,
     err: Option<String>,
 ) -> Element {
+    let tab = fx_tab();
     rect()
         .vertical()
         .width(Size::px(theme::WINDOW_W))
         .height(Size::px(theme::FX_BAND_H))
         .spacing(3.)
         .padding(Gaps::new(theme::GAP, 0., 0., 0.))
-        .child(fx_tab_bar(palette, look, page))
-        .child(look_fx_body(
+        .child(fx_tab_bar(
             palette,
             look,
-            values,
-            params,
-            controls_rev,
+            tab,
+            fx_tab,
             page,
+            family,
+            dock_family,
+            dock_page,
         ))
+        .child(if tab == FxTab::Look {
+            look_fx_body(palette, look, values, params, controls_rev)
+        } else {
+            atmosphere_controls(palette, atmo_values, controls_rev)
+        })
         .child(footer(palette, err))
         .into()
 }
@@ -464,8 +502,20 @@ fn fx_band_panel(
 fn fx_tab_bar(
     palette: Palette,
     look: Look,
+    tab: FxTab,
+    mut fx_tab: State<FxTab>,
     page: usize,
+    family: LookFamily,
+    mut dock_family: State<LookFamily>,
+    mut dock_page: State<usize>,
 ) -> Element {
+    let rail = family.rail();
+    let start = dock_start(page, family);
+    let end = (start + theme::DOCK_VISIBLE).min(rail.len());
+    let count = format!("{}–{} of {}", start + 1, end, rail.len());
+
+    let chips = family_rail(palette, family, dock_family, dock_page);
+
     rect()
         .horizontal()
         .width(Size::px(theme::WINDOW_W))
@@ -477,25 +527,147 @@ fn fx_tab_bar(
                 .spacing(4.)
                 .cross_align(Alignment::Center)
                 .child(gutter())
-                .child(fx_tab_chip(palette, "LOOK", true, |_| {}))
+                .child(fx_tab_chip(
+                    palette,
+                    "LOOK",
+                    tab == FxTab::Look,
+                    {
+                        let mut tab_state = fx_tab;
+                        move |_| tab_state.set(FxTab::Look)
+                    },
+                ))
+                .child(fx_tab_chip(
+                    palette,
+                    "ATMO",
+                    tab == FxTab::Atmo,
+                    {
+                        let mut tab_state = fx_tab;
+                        move |_| tab_state.set(FxTab::Atmo)
+                    },
+                ))
                 .child(gutter())
                 .child(
                     label()
-                        .text(format!("{}  ·  {}", look.label(), look.tile_line()))
+                        .text(if tab == FxTab::Look {
+                            format!("{}  ·  {}", look.label(), look.tile_line())
+                        } else {
+                            "smoke haze  ·  global atmosphere".into()
+                        })
                         .font_size(theme::FONT_SMALL)
                         .font_weight(FontWeight::BOLD)
                         .color(palette.text),
                 ),
         )
         .child(
-            label()
-                .text({
-                    let start = dock_start(page);
-                    let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
-                    format!("{}–{} of {}", start + 1, end, Look::RAIL.len())
+            rect()
+                .horizontal()
+                .spacing(6.)
+                .cross_align(Alignment::Center)
+                .child(chips)
+                .child(
+                    label()
+                        .text(count)
+                        .font_size(theme::FONT_SMALL)
+                        .color(palette.muted),
+                ),
+        )
+        .into()
+}
+
+fn family_rail(
+    palette: Palette,
+    active: LookFamily,
+    mut dock_family: State<LookFamily>,
+    mut dock_page: State<usize>,
+) -> Element {
+    let all = LookFamily::ALL;
+    let mut row = rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .background(palette.control)
+        .border(theme::border_all(palette.stroke_soft))
+        .overflow(Overflow::Clip);
+
+    for (i, &fam) in all.iter().enumerate() {
+        let selected = fam == active;
+        let is_last = i + 1 == all.len();
+        let mut family_state = dock_family;
+        let mut page_state = dock_page;
+        row = row.child(
+            rect()
+                .padding(Gaps::new(5., 11., 5., 11.))
+                .background(if selected {
+                    palette.accent
+                } else {
+                    Color::TRANSPARENT
                 })
-                .font_size(theme::FONT_SMALL)
-                .color(palette.muted),
+                .on_press(move |_| {
+                    *family_state.write() = fam;
+                    *page_state.write() = 0;
+                    request_redraw();
+                })
+                .child(
+                    label()
+                        .text(fam.label())
+                        .font_size(10.)
+                        .font_weight(FontWeight::BOLD)
+                        .color(if selected {
+                            palette.on_accent
+                        } else {
+                            palette.text_dim
+                        }),
+                ),
+        );
+
+        if !is_last {
+            row = row.child(
+                rect()
+                    .width(Size::px(1.))
+                    .height(Size::px(20.))
+                    .background(palette.stroke_soft),
+            );
+        }
+    }
+
+    row.into()
+}
+
+fn toggle_bypass(bypass_countdown: &mut State<bool>) {
+    bypass_countdown.set(!bypass_countdown());
+    request_redraw();
+}
+
+fn bypass_control(palette: Palette, bypass_countdown: State<bool>) -> Element {
+    let is_bypass = bypass_countdown();
+
+    rect()
+        .width(Size::px(theme::SHUTTER_SIDE))
+        .height(Size::px(theme::SHUTTER_D))
+        .padding(Gaps::new(0., 8., 0., 0.))
+        .main_align(Alignment::Center)
+        .cross_align(Alignment::Center)
+        .child(
+            Tile::new()
+                .on_select({
+                    let mut bypass = bypass_countdown;
+                    move |_| toggle_bypass(&mut bypass)
+                })
+                .leading(Checkbox::new().selected(is_bypass).size(18.))
+                .child(
+                    label()
+                        .text("bypass 3s")
+                        .font_size(theme::FONT_SMALL)
+                        .font_weight(if is_bypass {
+                            FontWeight::BOLD
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .color(if is_bypass {
+                            palette.text
+                        } else {
+                            palette.muted
+                        }),
+                ),
         )
         .into()
 }
@@ -539,11 +711,7 @@ fn look_fx_body(
     values: LookParams,
     params: State<LookParams>,
     controls_rev: State<u32>,
-    page: usize,
 ) -> Element {
-    let start = dock_start(page);
-    let end = (start + theme::DOCK_VISIBLE).min(Look::RAIL.len());
-    let _count = format!("{}–{} of {}", start + 1, end, Look::RAIL.len());
     let defs = look.param_defs();
 
     let mut col = rect().vertical().width(Size::fill()).spacing(3.);
@@ -564,11 +732,14 @@ fn look_dock(
     params: State<LookParams>,
     controls_rev: State<u32>,
     mut page_state: State<usize>,
+    mut family_state: State<LookFamily>,
     current_look: Look,
     page: usize,
+    family: LookFamily,
 ) -> Element {
-    let start = dock_start(page);
-    let shown = &Look::RAIL[start..start + theme::DOCK_VISIBLE.min(Look::RAIL.len() - start)];
+    let rail = family.rail();
+    let start = dock_start(page, family);
+    let shown = &rail[start..start + theme::DOCK_VISIBLE.min(rail.len().saturating_sub(start))];
 
     let mut cards = rect()
         .horizontal()
@@ -583,6 +754,8 @@ fn look_dock(
             look_state,
             params,
             controls_rev,
+            family_state,
+            page_state,
         ));
     }
 
@@ -595,17 +768,17 @@ fn look_dock(
         .cross_align(Alignment::Center)
         .on_wheel(move |e: Event<WheelEventData>| {
             if e.delta_y > 0.0 {
-                step_dock(&mut page_state, 1);
+                step_dock(&mut page_state, 1, family);
             } else if e.delta_y < 0.0 {
-                step_dock(&mut page_state, -1);
+                step_dock(&mut page_state, -1, family);
             }
         })
         .child(dock_chevron(palette, "<", move |_| {
-            step_dock(&mut page_state, -1)
+            step_dock(&mut page_state, -1, family)
         }))
         .child(cards)
         .child(dock_chevron(palette, ">", move |_| {
-            step_dock(&mut page_state, 1)
+            step_dock(&mut page_state, 1, family)
         }))
         .into()
 }
@@ -642,11 +815,15 @@ fn wear_handler(
     look_state: State<Look>,
     params: State<LookParams>,
     controls_rev: State<u32>,
+    dock_family: State<LookFamily>,
+    dock_page: State<usize>,
 ) -> impl FnMut(Event<PressEventData>) + 'static {
     let mut looks = look_state;
     let mut param_state = params;
     let mut rev = controls_rev;
-    move |_| wear_look(look, &mut looks, &mut param_state, &mut rev)
+    let mut family = dock_family;
+    let mut page = dock_page;
+    move |_| wear_look(look, &mut looks, &mut param_state, &mut rev, &mut family, &mut page)
 }
 
 fn look_card(
@@ -656,6 +833,8 @@ fn look_card(
     look_state: State<Look>,
     params: State<LookParams>,
     controls_rev: State<u32>,
+    dock_family: State<LookFamily>,
+    dock_page: State<usize>,
 ) -> Element {
     let text_w = theme::CARD_SLOT_W - theme::CARD_PAD * 2.;
     rect()
@@ -669,7 +848,14 @@ fn look_card(
             palette.stroke
         }))
         .overflow(Overflow::Clip)
-        .on_press(wear_handler(look, look_state, params, controls_rev))
+        .on_press(wear_handler(
+            look,
+            look_state,
+            params,
+            controls_rev,
+            dock_family,
+            dock_page,
+        ))
         .child(
             canvas(RenderCallback::new({
                 move |ctx| stills::draw_still(ctx, look)
@@ -686,7 +872,14 @@ fn look_card(
                 .padding(Gaps::new(2., theme::CARD_PAD, 4., theme::CARD_PAD))
                 .background(Color::from_argb(210, 24, 24, 24))
                 .spacing(1.)
-                .on_press(wear_handler(look, look_state, params, controls_rev))
+                .on_press(wear_handler(
+                    look,
+                    look_state,
+                    params,
+                    controls_rev,
+                    dock_family,
+                    dock_page,
+                ))
                 .child(
                     label()
                         .text(look.label())
@@ -694,7 +887,14 @@ fn look_card(
                         .font_weight(FontWeight::BOLD)
                         .color(palette.text)
                         .width(Size::px(text_w))
-                        .on_press(wear_handler(look, look_state, params, controls_rev)),
+                        .on_press(wear_handler(
+                            look,
+                            look_state,
+                            params,
+                            controls_rev,
+                            dock_family,
+                            dock_page,
+                        )),
                 )
                 .child(
                     label()
@@ -702,7 +902,14 @@ fn look_card(
                         .font_size(theme::FONT_SMALL)
                         .color(palette.text_dim)
                         .width(Size::px(text_w))
-                        .on_press(wear_handler(look, look_state, params, controls_rev)),
+                        .on_press(wear_handler(
+                            look,
+                            look_state,
+                            params,
+                            controls_rev,
+                            dock_family,
+                            dock_page,
+                        )),
                 ),
         )
         .into()
@@ -713,12 +920,17 @@ fn wear_look(
     look_state: &mut State<Look>,
     params: &mut State<LookParams>,
     controls_rev: &mut State<u32>,
+    dock_family: &mut State<LookFamily>,
+    dock_page: &mut State<usize>,
 ) {
     *look_state.write() = look;
     camera::set_look(look);
     let defaults = LookParams::defaults(look);
     params.set(defaults);
     apply_controls(defaults, controls_rev);
+    let family = look.family();
+    dock_family.set(family);
+    dock_page.set(dock_page_for_look(look, family));
 }
 
 fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) -> Element {
@@ -745,6 +957,17 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
         e.stop_propagation();
     };
 
+    let on_mouse_down = move |e: Event<MouseEventData>| {
+        if !interactive {
+            return;
+        }
+        let (nx, ny) = map_pointer(e.element_location.x as f32, e.element_location.y as f32);
+        set_pointer(nx, ny, true);
+        camera::refresh_preview();
+        rev.set(rev() + 1);
+        e.stop_propagation();
+    };
+
     let on_mouse_move = move |e: Event<MouseEventData>| {
         if !interactive || !pointer_down() {
             return;
@@ -755,12 +978,21 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
         rev.set(rev() + 1);
     };
 
-    let on_global_pointer_press = move |e: Event<PointerEventData>| {
+    let on_global_pointer_move = move |e: Event<PointerEventData>| {
+        if !interactive || !pointer_down() {
+            return;
+        }
+        let (nx, ny) = map_pointer(e.element_location().x as f32, e.element_location().y as f32);
+        set_pointer(nx, ny, true);
+        camera::refresh_preview();
+        rev.set(rev() + 1);
+    };
+
+    let on_global_pointer_press = move |_e: Event<PointerEventData>| {
         if pointer_down() {
             set_pointer(0.5, 0.5, false);
             camera::refresh_preview();
             rev.set(rev() + 1);
-            e.stop_propagation();
         }
     };
 
@@ -768,8 +1000,7 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
         .width(Size::px(theme::VIEWFINDER_W))
         .height(Size::px(theme::VIEWFINDER_H))
         .background(palette.surface)
-        .on_pointer_down(on_pointer_down)
-        .on_mouse_move(on_mouse_move)
+        .on_global_pointer_move(on_global_pointer_move)
         .on_global_pointer_press(on_global_pointer_press)
         .child(
             canvas(RenderCallback::new({
@@ -787,6 +1018,9 @@ fn stage_well(palette: Palette, look: Look, seq: u64, controls_rev: State<u32>) 
             }))
             .width(Size::fill())
             .height(Size::fill())
+            .on_pointer_down(on_pointer_down)
+            .on_mouse_down(on_mouse_down)
+            .on_mouse_move(on_mouse_move)
             .key(seq),
         )
         .into()
@@ -801,13 +1035,7 @@ fn atmosphere_controls(
     let mut panel = rect()
         .vertical()
         .width(Size::fill())
-        .spacing(6.)
-        .child(
-            label()
-                .text("smoke haze")
-                .font_size(10.)
-                .color(palette.muted),
-        );
+        .spacing(3.);
 
     for (index, def) in atmo_param_defs().iter().enumerate() {
         panel = panel.child(kit_slider(palette, *def, values[index], {
@@ -965,7 +1193,6 @@ fn shutter_button(
     } else {
         String::new()
     };
-    let is_bypass = *bypass_countdown.peek();
 
     rect()
         .horizontal()
@@ -991,63 +1218,15 @@ fn shutter_button(
                 .main_align(Alignment::Center)
                 .cross_align(Alignment::Center)
                 .a11y_focusable(true)
-                .on_press(move |_| {
-                    trigger_capture(is_bypass, shutter, next_id, keeps, keep_error)
+                .on_press({
+                    let bypass = bypass_countdown;
+                    move |_| {
+                        trigger_capture(*bypass.peek(), shutter, next_id, keeps, keep_error)
+                    }
                 })
                 .child(shutter_face(label_text)),
         )
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::px(theme::SHUTTER_SIDE))
-                .height(Size::px(theme::SHUTTER_D))
-                .main_align(Alignment::Center)
-                .cross_align(Alignment::Center)
-                .spacing(6.)
-                .on_press({
-                    let mut b = bypass_countdown;
-                    move |_| {
-                        let next = !*b.peek();
-                        *b.write() = next;
-                        request_redraw();
-                    }
-                })
-                .child(
-                    rect()
-                        .width(Size::px(14.))
-                        .height(Size::px(14.))
-                        .corner_radius(3.)
-                        .background(if is_bypass {
-                            palette.accent
-                        } else {
-                            palette.fill
-                        })
-                        .border(theme::border_all(if is_bypass {
-                            palette.accent
-                        } else {
-                            palette.stroke
-                        }))
-                        .main_align(Alignment::Center)
-                        .cross_align(Alignment::Center)
-                        .child(
-                            label()
-                                .text(if is_bypass { "✓" } else { "" })
-                                .font_size(10.)
-                                .font_weight(FontWeight::BOLD)
-                                .color(palette.bg),
-                        ),
-                )
-                .child(
-                    label()
-                        .text("bypass 3s")
-                        .font_size(theme::FONT_SMALL)
-                        .color(if is_bypass {
-                            palette.text
-                        } else {
-                            palette.muted
-                        }),
-                ),
-        )
+        .child(bypass_control(palette, bypass_countdown))
         .into()
 }
 
@@ -1145,10 +1324,12 @@ mod slider_ui_tests {
     fn app_shell_harness() -> impl IntoElement {
         let look = use_state(|| Look::None);
         let dock_page = use_state(|| 0usize);
+        let dock_family = use_state(|| LookFamily::Tape);
         let params = use_state(|| LookParams::defaults(Look::None));
         let controls_rev = use_state(|| 0u32);
         let current = look();
         let page = dock_page();
+        let family = dock_family();
         rect()
             .vertical()
             .width(Size::fill())
@@ -1171,28 +1352,32 @@ mod slider_ui_tests {
                 params,
                 controls_rev,
                 dock_page,
+                dock_family,
                 current,
                 page,
+                family,
             ))
     }
 
     fn dock_harness() -> impl IntoElement {
         let look = use_state(|| Look::None);
         let mut dock_page = use_state(|| 0usize);
+        let dock_family = use_state(|| LookFamily::Tape);
         let params = use_state(|| LookParams::defaults(Look::None));
         let controls_rev = use_state(|| 0u32);
         let current = look();
         let page = dock_page();
+        let family = dock_family();
         rect()
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
                 if shutter::is_arrow_left(&e.key, e.code) {
-                    step_dock(&mut dock_page, -1);
+                    step_dock(&mut dock_page, -1, family);
                 }
                 if shutter::is_arrow_right(&e.key, e.code) {
-                    step_dock(&mut dock_page, 1);
+                    step_dock(&mut dock_page, 1, family);
                 }
             })
             .child(look_dock(
@@ -1201,8 +1386,10 @@ mod slider_ui_tests {
                 params,
                 controls_rev,
                 dock_page,
+                dock_family,
                 current,
                 page,
+                family,
             ))
     }
 
@@ -1378,12 +1565,11 @@ mod slider_ui_tests {
         test.sync_and_update();
         assert!(has_label(&test, "OFF"));
         assert!(has_label(&test, "clean camera"));
-        assert!(has_label(&test, "MORPH"));
-        assert!(has_label(&test, "dark lines · color"));
         assert!(has_label(&test, "VHS"));
         assert!(has_label(&test, "tracking · wear"));
-        assert!(!has_label(&test, "GX"));
-        assert!(!has_label(&test, "looks"));
+        assert!(has_label(&test, "GX"));
+        assert!(has_label(&test, "Hi8 · 1994"));
+        assert!(!has_label(&test, "MORPH"));
     }
 
     #[test]
@@ -1503,6 +1689,72 @@ mod slider_ui_tests {
         let mut test = launch_test(shutter_harness);
         test.sync_and_update();
         assert!(has_label(&test, "bypass 3s"));
+    }
+
+    #[test]
+    fn bypass_toggles_before_shutter_is_pressed() {
+        let _lock = vfx::TEST_MUTEX.lock().unwrap();
+        let mut test = TestingRunner::new(
+            app,
+            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
+            |_| {},
+            1.0,
+        )
+        .0;
+        test.sync_and_update();
+        click_label(&mut test, "bypass 3s");
+        test.sync_and_update();
+        click_shutter(&mut test);
+        test.sync_and_update();
+        assert!(
+            !has_label(&test, "3"),
+            "bypass must arm before the shutter is ever clicked"
+        );
+    }
+
+    #[test]
+    fn bypass_unchecks_without_using_shutter() {
+        let _lock = vfx::TEST_MUTEX.lock().unwrap();
+        let mut test = TestingRunner::new(
+            app,
+            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
+            |_| {},
+            1.0,
+        )
+        .0;
+        test.sync_and_update();
+        click_label(&mut test, "bypass 3s");
+        test.sync_and_update();
+        click_label(&mut test, "bypass 3s");
+        test.sync_and_update();
+        click_shutter(&mut test);
+        test.sync_and_update();
+        assert!(
+            has_label(&test, "3"),
+            "unchecking bypass should restore the 3-2-1 countdown"
+        );
+    }
+
+    #[test]
+    fn bypass_skips_countdown_on_first_shutter_press() {
+        let _lock = vfx::TEST_MUTEX.lock().unwrap();
+        let mut test = TestingRunner::new(
+            app,
+            Size2D::new(theme::WINDOW_W, theme::WINDOW_H),
+            |_| {},
+            1.0,
+        )
+        .0;
+        test.sync_and_update();
+        click_label(&mut test, "bypass 3s");
+        test.sync_and_update();
+        click_shutter(&mut test);
+        test.sync_and_update();
+        assert!(
+            !has_label(&test, "3"),
+            "bypass should skip the countdown on the very next shutter press"
+        );
+        assert!(has_label(&test, "✓"), "bypass capture should flash immediately");
     }
 
     fn all_label_boxes(test: &TestingRunner) -> Vec<(String, f32, f32, f32, f32)> {
@@ -1625,10 +1877,15 @@ mod slider_ui_tests {
         camera::set_preview_for_test(pw, ph, rgba);
     }
 
-    fn page_dock_to(test: &mut TestingRunner, start: usize) {
+    fn page_dock_to(test: &mut TestingRunner, start: usize, family: LookFamily) {
         for _ in 0..start {
             click_label(test, ">");
         }
+        let _ = family;
+    }
+
+    fn select_family(test: &mut TestingRunner, family: LookFamily) {
+        click_label(test, family.label());
     }
 
     fn render_look_shot(shots: &Path, look: Look, filename: &str) {
@@ -1637,13 +1894,17 @@ mod slider_ui_tests {
         });
         seed_preview(look);
 
-        let idx = Look::RAIL.iter().position(|&l| l == look).unwrap();
-        let dock_start = idx.saturating_sub(1).min(dock_max());
+        let family = look.family();
+        let dock_start = dock_page_for_look(look, family);
 
         let mut test =
             TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
         test.sync_and_update();
-        page_dock_to(&mut test, dock_start);
+        if family != LookFamily::Tape {
+            select_family(&mut test, family);
+            test.sync_and_update();
+        }
+        page_dock_to(&mut test, dock_start, family);
         test.sync_and_update();
         click_label(&mut test, look.tile_line());
         test.sync_and_update();
@@ -1662,7 +1923,7 @@ mod slider_ui_tests {
         let mut test =
             TestingRunner::new(app, Size2D::new(theme::WINDOW_W, theme::WINDOW_H), |_| {}, 1.0).0;
         test.sync_and_update();
-        page_dock_to(&mut test, start);
+        page_dock_to(&mut test, start, LookFamily::Tape);
         test.sync_and_update();
 
         let path = shots.join(filename);

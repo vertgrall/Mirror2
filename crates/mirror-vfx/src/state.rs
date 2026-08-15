@@ -1,5 +1,9 @@
 //! Temporal state — frame counter, VHS ghost, smoke phase, morph ink history.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static BREATHE_SEED: AtomicU32 = AtomicU32::new(0xA5A5_5A5A);
+
 pub struct VfxState {
     pub frame: u64,
     pub smoke_phase: f32,
@@ -23,11 +27,20 @@ pub struct VfxState {
     /// Normalized pointer in frame space (0–1). Used by SMUDGE / POSSESS.
     pub pointer_x: f32,
     pub pointer_y: f32,
+    pub pointer_prev_x: f32,
+    pub pointer_prev_y: f32,
     pub pointer_down: bool,
+    /// Wet paint layer for SMUDGE.
+    pub paint_r: Vec<f32>,
+    pub paint_g: Vec<f32>,
+    pub paint_b: Vec<f32>,
+    pub paint_a: Vec<f32>,
     /// Afterimage burn-in buffer for POSSESS.
     pub burn_r: Vec<f32>,
     pub burn_g: Vec<f32>,
     pub burn_b: Vec<f32>,
+    /// Random layout seed for BREATHE particle clusters (re-rolled on look entry).
+    pub breathe_seed: u32,
 }
 
 impl Default for VfxState {
@@ -53,10 +66,17 @@ impl Default for VfxState {
             mosh_rgb: None,
             pointer_x: 0.5,
             pointer_y: 0.5,
+            pointer_prev_x: 0.5,
+            pointer_prev_y: 0.5,
             pointer_down: false,
+            paint_r: Vec::new(),
+            paint_g: Vec::new(),
+            paint_b: Vec::new(),
+            paint_a: Vec::new(),
             burn_r: Vec::new(),
             burn_g: Vec::new(),
             burn_b: Vec::new(),
+            breathe_seed: 1,
         }
     }
 }
@@ -85,6 +105,11 @@ impl VfxState {
             self.burn_r.clear();
             self.burn_g.clear();
             self.burn_b.clear();
+            self.paint_r.clear();
+            self.paint_g.clear();
+            self.paint_b.clear();
+            self.paint_a.clear();
+            self.breathe_seed = BREATHE_SEED.fetch_add(0x9E37_79B9, Ordering::Relaxed);
         }
         self.frame = self.frame.wrapping_add(1);
         self.smoke_phase += 0.016;
@@ -108,12 +133,36 @@ impl VfxState {
         self.burn_r.clear();
         self.burn_g.clear();
         self.burn_b.clear();
+        self.paint_r.clear();
+        self.paint_g.clear();
+        self.paint_b.clear();
+        self.paint_a.clear();
     }
 
     pub fn set_pointer(&mut self, nx: f32, ny: f32, down: bool) {
-        self.pointer_x = nx.clamp(0.0, 1.0);
-        self.pointer_y = ny.clamp(0.0, 1.0);
+        let nx = nx.clamp(0.0, 1.0);
+        let ny = ny.clamp(0.0, 1.0);
+        if down {
+            if self.pointer_down {
+                self.pointer_prev_x = self.pointer_x;
+                self.pointer_prev_y = self.pointer_y;
+            } else {
+                self.pointer_prev_x = nx;
+                self.pointer_prev_y = ny;
+            }
+        }
+        self.pointer_x = nx;
+        self.pointer_y = ny;
         self.pointer_down = down;
+    }
+
+    pub fn ensure_paint(&mut self, len: usize) {
+        if self.paint_r.len() != len {
+            self.paint_r = vec![0.0; len];
+            self.paint_g = vec![0.0; len];
+            self.paint_b = vec![0.0; len];
+            self.paint_a = vec![0.0; len];
+        }
     }
 
     pub fn ensure_burn(&mut self, len: usize) {
@@ -121,6 +170,14 @@ impl VfxState {
             self.burn_r = vec![0.0; len];
             self.burn_g = vec![0.0; len];
             self.burn_b = vec![0.0; len];
+        }
+    }
+
+    /// Gray-Scott reaction-diffusion grid (u,v in 0..1).
+    pub fn ensure_rd(&mut self, len: usize) {
+        if self.rd_u.len() != len {
+            self.rd_u = vec![1.0; len];
+            self.rd_v = vec![0.0; len];
         }
     }
 

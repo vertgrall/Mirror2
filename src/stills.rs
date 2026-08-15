@@ -81,6 +81,7 @@ pub fn for_look(look: Look) -> &'static Still {
         Look::Specter => still_for!(Look::Specter, "../assets/fx/specter.jpg"),
         Look::Possess => still_for!(Look::Possess, "../assets/fx/possess.jpg"),
         Look::Crawl => still_for!(Look::Crawl, "../assets/fx/crawl.jpg"),
+        Look::Haunt => still_for!(Look::Haunt, "../assets/fx/haunt.jpg"),
     }
 }
 
